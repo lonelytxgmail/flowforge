@@ -9,7 +9,6 @@ import com.flowforge.runtime.domain.ExecutionEvent
 import com.flowforge.runtime.domain.NodeExecution
 import com.flowforge.runtime.domain.WorkflowInstance
 import org.springframework.jdbc.core.simple.JdbcClient
-import org.springframework.jdbc.support.GeneratedKeyHolder
 import org.springframework.stereotype.Repository
 import java.time.LocalDateTime
 
@@ -23,13 +22,13 @@ class WorkflowInstanceRepository(
         workflowDefinitionId: Long,
         workflowVersionId: Long,
         inputPayload: Map<String, Any?>?
-    ): Long {
-        val keyHolder = GeneratedKeyHolder()
+    ): Long =
         jdbcClient.sql(
             """
             INSERT INTO workflow_instance(
                 workflow_definition_id, workflow_version_id, status, input_payload, context_json, current_node_id, started_at, created_at
             ) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            RETURNING id
             """
         )
             .param(workflowDefinitionId)
@@ -38,10 +37,8 @@ class WorkflowInstanceRepository(
             .param(objectMapper.toJsonb(inputPayload))
             .param(objectMapper.toJsonb(emptyMap<String, Any?>()))
             .param(null)
-            .update(keyHolder)
-
-        return keyHolder.key!!.toLong()
-    }
+            .query(Long::class.java)
+            .single()
 
     fun updateStatus(instanceId: Long, status: WorkflowInstanceStatus, currentNodeId: String?, endedAt: LocalDateTime? = null) {
         jdbcClient.sql(
@@ -97,13 +94,13 @@ class NodeExecutionRepository(
         nodeName: String,
         nodeType: String,
         input: Map<String, Any?>?
-    ): Long {
-        val keyHolder = GeneratedKeyHolder()
+    ): Long =
         jdbcClient.sql(
             """
             INSERT INTO node_execution(
                 workflow_instance_id, node_id, node_name, node_type, status, attempt_no, input_json, started_at
             ) VALUES (?, ?, ?, ?, ?, 1, ?, CURRENT_TIMESTAMP)
+            RETURNING id
             """
         )
             .param(workflowInstanceId)
@@ -112,10 +109,8 @@ class NodeExecutionRepository(
             .param(nodeType)
             .param(NodeExecutionStatus.RUNNING.name)
             .param(objectMapper.toJsonb(input))
-            .update(keyHolder)
-
-        return keyHolder.key!!.toLong()
-    }
+            .query(Long::class.java)
+            .single()
 
     fun markSucceeded(id: Long, output: Map<String, Any?>?) {
         jdbcClient.sql(

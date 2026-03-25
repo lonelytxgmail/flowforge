@@ -20,6 +20,7 @@ class ApiExceptionHandler {
 
     @ExceptionHandler(MethodArgumentNotValidException::class)
     fun handleValidationException(ex: MethodArgumentNotValidException): ResponseEntity<ErrorResponse> =
-        ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ErrorResponse(ex.message))
+        ResponseEntity.status(HttpStatus.BAD_REQUEST).body(
+            ErrorResponse(ex.message ?: "validation error")
+        )
 }
-

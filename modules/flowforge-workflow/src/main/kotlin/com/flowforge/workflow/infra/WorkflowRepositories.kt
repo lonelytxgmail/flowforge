@@ -8,32 +8,27 @@ import com.flowforge.workflow.domain.WorkflowDefinition
 import com.flowforge.workflow.domain.WorkflowDsl
 import com.flowforge.workflow.domain.WorkflowVersion
 import org.springframework.jdbc.core.simple.JdbcClient
-import org.springframework.jdbc.support.GeneratedKeyHolder
 import org.springframework.stereotype.Repository
-import java.sql.Timestamp
-import java.time.LocalDateTime
 
 @Repository
 class WorkflowDefinitionRepository(
     private val jdbcClient: JdbcClient
 ) {
 
-    fun save(code: String, name: String, description: String?): Long {
-        val keyHolder = GeneratedKeyHolder()
+    fun save(code: String, name: String, description: String?): Long =
         jdbcClient.sql(
             """
             INSERT INTO workflow_definition(code, name, description, status, created_at, updated_at)
             VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            RETURNING id
             """
         )
             .param(code)
             .param(name)
             .param(description)
             .param(WorkflowDefinitionStatus.DRAFT.name)
-            .update(keyHolder)
-
-        return keyHolder.key!!.toLong()
-    }
+            .query(Long::class.java)
+            .single()
 
     fun findById(id: Long): WorkflowDefinition? =
         jdbcClient.sql(
@@ -78,19 +73,20 @@ class WorkflowVersionRepository(
             .single()
 
     fun savePublishedVersion(workflowDefinitionId: Long, versionNo: Int, dsl: WorkflowDsl): Long {
-        val keyHolder = GeneratedKeyHolder()
-        jdbcClient.sql(
+        val versionId = jdbcClient.sql(
             """
             INSERT INTO workflow_version(
                 workflow_definition_id, version_no, status, dsl_json, published_at, created_at
             ) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            RETURNING id
             """
         )
             .param(workflowDefinitionId)
             .param(versionNo)
             .param(WorkflowVersionStatus.PUBLISHED.name)
             .param(objectMapper.toJsonb(dsl))
-            .update(keyHolder)
+            .query(Long::class.java)
+            .single()
 
         jdbcClient.sql(
             """
@@ -103,7 +99,7 @@ class WorkflowVersionRepository(
             .param(workflowDefinitionId)
             .update()
 
-        return keyHolder.key!!.toLong()
+        return versionId
     }
 
     fun findById(id: Long): WorkflowVersion? =
@@ -146,4 +142,3 @@ class WorkflowVersionRepository(
             createdAt = rs.getTimestamp("created_at").toLocalDateTime()
         )
 }
-

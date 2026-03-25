@@ -48,11 +48,27 @@ export PATH=$JAVA_HOME/bin:$PATH
 java -version
 ```
 
-### 2. Gradle
+### 2. direnv
 
-当前项目使用 Gradle Kotlin DSL。
+你已经安装了 `direnv`，这个项目也已经带上了 [.envrc](/Users/lee/LeeProject/flowforge/.envrc)。
 
-如果你本机还没有 `gradle` 命令，需要先安装 Gradle，或者后续补一个 Gradle Wrapper。
+只要你的 `zsh` 已经启用 `direnv hook`，第一次进入项目目录执行一次：
+
+```bash
+direnv allow
+```
+
+之后每次进入这个目录，都会自动切到 Java 21。
+
+### 3. Gradle Wrapper
+
+项目已经自带 `Gradle Wrapper`，所以你不需要全局安装 `gradle`。
+
+统一使用：
+
+```bash
+./gradlew
+```
 
 ## 本地启动 PostgreSQL
 
@@ -69,16 +85,17 @@ docker compose up -d postgres
 
 ## 启动应用
 
-在具备 Java 21 和 Gradle 后：
+在项目目录下，先让 `direnv` 生效，然后直接运行：
 
 ```bash
-gradle :flowforge-app:bootRun
+direnv allow
+./gradlew :flowforge-app:bootRun
 ```
 
 或者打包：
 
 ```bash
-gradle :flowforge-app:bootJar
+./gradlew build
 java -jar flowforge-app/build/libs/flowforge-app.jar
 ```
 
@@ -169,4 +186,3 @@ curl http://localhost:8080/api/instances/1/events
 3. 加上暂停 / 恢复 / 重试 API
 4. 增加数字员工节点和条件分支节点
 5. 给前端管理台补最小页面
-

@@ -1,0 +1,27 @@
+spring:
+  application:
+    name: flowforge
+  datasource:
+    url: jdbc:postgresql://localhost:5432/flowforge
+    username: flowforge
+    password: flowforge
+    driver-class-name: org.postgresql.Driver
+  jackson:
+    default-property-inclusion: non_null
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema.sql
+
+server:
+  port: 8080
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+
+logging:
+  level:
+    root: INFO
+    com.flowforge: INFO
+

@@ -1,0 +1,38 @@
+{
+  "dsl": {
+    "version": "1.0",
+    "nodes": [
+      {
+        "id": "start_1",
+        "name": "Start",
+        "type": "START",
+        "config": {}
+      },
+      {
+        "id": "ability_1",
+        "name": "Mock Atomic Ability",
+        "type": "ATOMIC_ABILITY",
+        "config": {
+          "abilityCode": "mock.echo"
+        }
+      },
+      {
+        "id": "end_1",
+        "name": "End",
+        "type": "END",
+        "config": {}
+      }
+    ],
+    "edges": [
+      {
+        "from": "start_1",
+        "to": "ability_1"
+      },
+      {
+        "from": "ability_1",
+        "to": "end_1"
+      }
+    ]
+  }
+}
+

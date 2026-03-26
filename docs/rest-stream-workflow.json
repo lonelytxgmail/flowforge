@@ -1,0 +1,40 @@
+{
+  "dsl": {
+    "version": "1.0",
+    "nodes": [
+      {
+        "id": "start_1",
+        "name": "Start",
+        "type": "START",
+        "config": {}
+      },
+      {
+        "id": "stream_1",
+        "name": "Read Stream",
+        "type": "ATOMIC_ABILITY",
+        "config": {
+          "abilityType": "REST",
+          "url": "http://localhost:8080/api/mock/stream",
+          "method": "GET",
+          "streaming": true
+        }
+      },
+      {
+        "id": "end_1",
+        "name": "End",
+        "type": "END",
+        "config": {}
+      }
+    ],
+    "edges": [
+      {
+        "from": "start_1",
+        "to": "stream_1"
+      },
+      {
+        "from": "stream_1",
+        "to": "end_1"
+      }
+    ]
+  }
+}

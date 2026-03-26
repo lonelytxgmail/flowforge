@@ -1,0 +1,72 @@
+{
+  "dsl": {
+    "version": "1.0",
+    "nodes": [
+      {
+        "id": "start_1",
+        "name": "Start",
+        "type": "START",
+        "config": {}
+      },
+      {
+        "id": "rest_login_1",
+        "name": "Login And Invoke Protected REST",
+        "type": "ATOMIC_ABILITY",
+        "config": {
+          "abilityType": "REST",
+          "url": "http://localhost:8080/api/mock/echo",
+          "method": "POST",
+          "auth": {
+            "type": "login_session",
+            "loginUrl": "http://localhost:8080/api/mock/login",
+            "loginMethod": "POST",
+            "loginBody": {
+              "username": "lee",
+              "password": "secret"
+            },
+            "tokenPath": "token",
+            "sessionContextKey": "mockSession"
+          }
+        }
+      },
+      {
+        "id": "rest_followup_1",
+        "name": "Reuse Session In Followup REST",
+        "type": "ATOMIC_ABILITY",
+        "config": {
+          "abilityType": "REST",
+          "url": "http://localhost:8080/api/mock/echo",
+          "method": "POST",
+          "auth": {
+            "type": "login_session",
+            "sessionContextKey": "mockSession"
+          },
+          "body": {
+            "step": "followup"
+          }
+        }
+      },
+      {
+        "id": "end_1",
+        "name": "End",
+        "type": "END",
+        "config": {}
+      }
+    ],
+    "edges": [
+      {
+        "from": "start_1",
+        "to": "rest_login_1"
+      },
+      {
+        "from": "rest_login_1",
+        "to": "rest_followup_1"
+      },
+      {
+        "from": "rest_followup_1",
+        "to": "end_1"
+      }
+    ]
+  }
+}
+

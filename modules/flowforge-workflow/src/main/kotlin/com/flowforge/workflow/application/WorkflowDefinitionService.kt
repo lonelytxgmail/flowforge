@@ -3,15 +3,18 @@ package com.flowforge.workflow.application
 import com.flowforge.common.model.AppException
 import com.flowforge.common.model.NodeType
 import com.flowforge.workflow.domain.WorkflowDefinition
+import com.flowforge.workflow.domain.NodeTemplate
 import com.flowforge.workflow.domain.WorkflowVersion
 import com.flowforge.workflow.infra.WorkflowDefinitionRepository
+import com.flowforge.workflow.infra.NodeTemplateRepository
 import com.flowforge.workflow.infra.WorkflowVersionRepository
 import org.springframework.stereotype.Service
 
 @Service
 class WorkflowDefinitionService(
     private val workflowDefinitionRepository: WorkflowDefinitionRepository,
-    private val workflowVersionRepository: WorkflowVersionRepository
+    private val workflowVersionRepository: WorkflowVersionRepository,
+    private val nodeTemplateRepository: NodeTemplateRepository
 ) {
 
     fun createWorkflow(command: CreateWorkflowCommand): WorkflowDefinition {
@@ -42,6 +45,71 @@ class WorkflowDefinitionService(
         workflowVersionRepository.findLatestPublishedVersion(workflowDefinitionId)
             ?: throw AppException("No published workflow version found for definition: $workflowDefinitionId")
 
+    fun getWorkflowDefinition(id: Long): WorkflowDefinition =
+        workflowDefinitionRepository.findById(id)
+            ?: throw AppException("Workflow definition not found: $id")
+
+    fun listWorkflowDefinitions(): List<WorkflowDefinition> =
+        workflowDefinitionRepository.findAll()
+
+    fun listWorkflowVersions(workflowDefinitionId: Long): List<WorkflowVersion> =
+        workflowVersionRepository.findByWorkflowDefinitionId(workflowDefinitionId)
+
+    fun saveNodeTemplate(command: SaveNodeTemplateCommand): NodeTemplate {
+        validateNodeTemplate(command)
+
+        val id = nodeTemplateRepository.save(
+            code = command.code,
+            name = command.name,
+            description = command.description,
+            nodeType = command.nodeType,
+            nodeConfig = command.nodeConfig
+        )
+
+        return nodeTemplateRepository.findById(id)
+            ?: throw AppException("Node template was created but cannot be loaded: $id")
+    }
+
+    fun listNodeTemplates(): List<NodeTemplate> =
+        nodeTemplateRepository.findAll()
+
+    fun getNodeTemplate(id: Long): NodeTemplate =
+        nodeTemplateRepository.findById(id)
+            ?: throw AppException("Node template not found: $id")
+
+    fun updateNodeTemplate(command: UpdateNodeTemplateCommand): NodeTemplate {
+        validateNodeTemplate(
+            SaveNodeTemplateCommand(
+                code = command.code,
+                name = command.name,
+                description = command.description,
+                nodeType = command.nodeType,
+                nodeConfig = command.nodeConfig
+            )
+        )
+
+        val existing = nodeTemplateRepository.findById(command.id)
+            ?: throw AppException("Node template not found: ${command.id}")
+
+        nodeTemplateRepository.update(
+            id = existing.id,
+            code = command.code,
+            name = command.name,
+            description = command.description,
+            nodeType = command.nodeType,
+            nodeConfig = command.nodeConfig
+        )
+
+        return nodeTemplateRepository.findById(existing.id)
+            ?: throw AppException("Node template was updated but cannot be loaded: ${existing.id}")
+    }
+
+    fun deleteNodeTemplate(id: Long) {
+        val existing = nodeTemplateRepository.findById(id)
+            ?: throw AppException("Node template not found: $id")
+        nodeTemplateRepository.delete(existing.id)
+    }
+
     /**
      * 第一阶段先做最必要的 DSL 校验：
      * 1. 必须有 start / end
@@ -57,6 +125,25 @@ class WorkflowDefinitionService(
         }
         if (dsl.nodes.none { it.type == NodeType.END }) {
             throw AppException("DSL must contain an END node")
+        }
+    }
+
+    private fun validateNodeTemplate(command: SaveNodeTemplateCommand) {
+        when (command.nodeType) {
+            NodeType.START, NodeType.END -> {
+                if (command.nodeConfig.isNotEmpty()) {
+                    return
+                }
+            }
+            NodeType.ATOMIC_ABILITY -> {
+                val abilityType = command.nodeConfig["abilityType"]?.toString()
+                val hasMockAbility = command.nodeConfig["abilityCode"] != null
+                if (abilityType == null && !hasMockAbility) {
+                    throw AppException("ATOMIC_ABILITY template requires config.abilityType or config.abilityCode")
+                }
+            }
+            NodeType.DIGITAL_EMPLOYEE, NodeType.CONDITION, NodeType.WAIT_FOR_FEEDBACK,
+            NodeType.LLM, NodeType.AGENT, NodeType.TOOL -> return
         }
     }
 }

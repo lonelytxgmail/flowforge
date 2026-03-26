@@ -1,22 +1,44 @@
-# flowforge-console
+# FlowForge Console
 
-第一阶段前端管理台先不正式实现复杂页面。
-
-这里先作为占位目录，后续建议使用：
+前端管理台第一版使用：
 
 - React
 - TypeScript
 - Vite
-- TanStack Router / React Router
-- TanStack Query
-- Ant Design 或更轻的自定义管理台组件
+- React Router
+- Framer Motion
 
-建议第一批页面：
+## 启动
 
-1. 工作流定义列表
-2. 创建工作流定义
-3. 发布版本（JSON DSL 编辑）
-4. 实例列表
-5. 实例详情
-6. 执行日志页
+```bash
+cd flowforge-console
+npm install
+npm run dev
+```
 
+默认地址：
+
+- http://localhost:5173
+
+默认会请求：
+
+- `http://localhost:8080`
+
+如果你的后端地址不同，可以这样指定：
+
+```bash
+VITE_API_BASE_URL=http://localhost:8080 npm run dev
+```
+
+## 当前页面
+
+- 控制台首页
+- 工作流详情页
+- 实例详情页
+
+## 当前设计方向
+
+- 偏控制塔而不是普通后台
+- 强排版、弱卡片
+- 左侧固定导航 + 右侧主工作区
+- 轻量动效，不做噪音式动画

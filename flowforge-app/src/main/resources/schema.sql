@@ -24,6 +24,21 @@ CREATE TABLE IF NOT EXISTS workflow_version (
 CREATE INDEX IF NOT EXISTS idx_workflow_version_definition_id
     ON workflow_version(workflow_definition_id);
 
+-- 节点模板表：用于存储可复用的节点预设，后续结构化编辑和图形化编排都可以复用
+CREATE TABLE IF NOT EXISTS node_template (
+    id BIGSERIAL PRIMARY KEY,
+    code VARCHAR(128) NOT NULL UNIQUE,
+    name VARCHAR(256) NOT NULL,
+    description TEXT,
+    node_type VARCHAR(64) NOT NULL,
+    node_config JSONB NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_node_template_node_type
+    ON node_template(node_type);
+
 -- 实例表：某个工作流版本的一次运行
 CREATE TABLE IF NOT EXISTS workflow_instance (
     id BIGSERIAL PRIMARY KEY,
@@ -84,15 +99,23 @@ CREATE TABLE IF NOT EXISTS workflow_task (
     node_id VARCHAR(128) NOT NULL,
     status VARCHAR(32) NOT NULL,
     attempt_no INTEGER NOT NULL DEFAULT 1,
+    input_json JSONB,
     available_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     locked_at TIMESTAMP,
     lock_owner VARCHAR(128),
+    error_message TEXT,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_workflow_task_status_available_at
     ON workflow_task(status, available_at);
+
+ALTER TABLE workflow_task
+    ADD COLUMN IF NOT EXISTS input_json JSONB;
+
+ALTER TABLE workflow_task
+    ADD COLUMN IF NOT EXISTS error_message TEXT;
 
 -- 反馈表：第一阶段最小闭环不会完整使用，但先把模型建出来
 CREATE TABLE IF NOT EXISTS feedback_record (
@@ -104,4 +127,3 @@ CREATE TABLE IF NOT EXISTS feedback_record (
     created_by VARCHAR(128),
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
-

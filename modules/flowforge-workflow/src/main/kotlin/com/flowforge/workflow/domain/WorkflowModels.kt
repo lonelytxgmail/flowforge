@@ -50,3 +50,13 @@ data class WorkflowEdgeDsl(
     val condition: String? = null
 )
 
+data class NodeTemplate(
+    val id: Long,
+    val code: String,
+    val name: String,
+    val description: String?,
+    val nodeType: NodeType,
+    val nodeConfig: Map<String, Any?>,
+    val createdAt: LocalDateTime,
+    val updatedAt: LocalDateTime
+)

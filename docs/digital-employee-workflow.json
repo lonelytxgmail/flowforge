@@ -1,0 +1,42 @@
+{
+  "dsl": {
+    "version": "1.0",
+    "nodes": [
+      {
+        "id": "start_1",
+        "name": "Start",
+        "type": "START",
+        "config": {}
+      },
+      {
+        "id": "employee_1",
+        "name": "Digital Employee REST Call",
+        "type": "DIGITAL_EMPLOYEE",
+        "config": {
+          "employeeCode": "mock-service-desk",
+          "url": "http://localhost:8080/api/mock/echo",
+          "method": "POST",
+          "body": {
+            "from": "digital-employee"
+          }
+        }
+      },
+      {
+        "id": "end_1",
+        "name": "End",
+        "type": "END",
+        "config": {}
+      }
+    ],
+    "edges": [
+      {
+        "from": "start_1",
+        "to": "employee_1"
+      },
+      {
+        "from": "employee_1",
+        "to": "end_1"
+      }
+    ]
+  }
+}

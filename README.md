@@ -11,6 +11,51 @@ FlowForge 是一个面向“工作流/策略编排”的模块化单体项目。
 5. 记录 `node_execution` 和 `execution_event`
 6. 提供 REST API 查询实例状态与执行日志
 
+同时，执行模型已经从“同步 while 循环”升级为“数据库任务表 + 应用内 worker”：
+
+- `workflow_task` 表保存待执行节点
+- `WorkflowTaskWorker` 轮询并消费任务
+- `NodeExecutor` 负责具体节点执行
+
+这会让后续的暂停、恢复、重试、定时触发更容易实现。
+
+当前已经支持的节点能力：
+
+- `START`
+- `END`
+- `ATOMIC_ABILITY`
+- `DIGITAL_EMPLOYEE`
+- `CONDITION`
+- `WAIT_FOR_FEEDBACK`
+
+其中 `ATOMIC_ABILITY` 当前支持这些能力类型：
+
+- `REST`
+- `REDIS`
+- `DATABASE`
+- `ELASTICSEARCH`
+- `KAFKA`
+
+其中 `DATABASE` 可直接连接 `PostgreSQL / MySQL`。
+
+目前已经补上的运行态控制 API：
+
+- `POST /api/instances/{id}/pause`
+- `POST /api/instances/{id}/resume`
+- `POST /api/instances/{id}/retry`
+- `POST /api/instances/{id}/feedback`
+
+目前已经补上的基础查询 API：
+
+- `GET /api/workflows`
+- `GET /api/workflows/{id}`
+- `GET /api/workflows/{id}/versions`
+- `GET /api/instances`
+- `GET /api/instances/{id}`
+- `GET /api/instances/{id}/node-executions`
+- `GET /api/instances/{id}/events`
+- `GET /api/instances/{id}/feedback-records`
+
 ## 为什么这样搭
 
 - 后端使用 `Kotlin + Spring Boot 3 + PostgreSQL`
@@ -33,6 +78,13 @@ flowforge/
 ├── docker-compose.yml
 └── README.md
 ```
+
+## 核心文档
+
+- [第一阶段计划](/Users/lee/LeeProject/flowforge/docs/phase-one-plan.md)
+- [开发路线图](/Users/lee/LeeProject/flowforge/docs/development-roadmap.md)
+- [DSL 规范](/Users/lee/LeeProject/flowforge/docs/dsl-spec.md)
+- [节点目录](/Users/lee/LeeProject/flowforge/docs/node-catalog.md)
 
 ## 运行前提
 
@@ -176,6 +228,74 @@ curl http://localhost:8080/api/instances/1/events
 - 先 JSON DSL，不先做画布
 - 先 mock 原子能力执行器，不接真实数字员工
 - `workflow_task` / `feedback_record` 先建表，后续补完整逻辑
+
+## 关于“定时触发执行”
+
+当前项目已经具备两个和“定时”相关的基础能力，但还没有完整的“业务定时触发”功能：
+
+1. 已有应用内定时 worker
+   作用是每隔几秒扫描一次 `workflow_task`，把待执行节点跑起来。
+   这解决的是“任务消费”问题，不是“到点自动发起一个新实例”。
+
+2. 还没有正式实现业务定时触发
+   也就是还没有：
+   - `schedule_plan` 之类的计划表
+   - 创建/启停定时计划的 API
+   - 到点自动创建 `workflow_instance` 的调度器
+
+如果你要做第一阶段可用版，我建议下一步按这个方案实现：
+
+- 新增 `workflow_schedule` 表
+- 存 `workflow_definition_id`、cron 表达式、启停状态、最近执行时间、下次执行时间
+- 用 Spring `@Scheduled` 定时扫描“到期计划”
+- 到期后调用现有 `WorkflowEngineService.startWorkflow(...)`
+
+这个方案和当前“数据库任务表 + 应用内 worker”是兼容的，而且仍然不需要 MQ / Redis。
+
+## 等待反馈节点示例
+
+现在已经支持 `WAIT_FOR_FEEDBACK` 节点。
+
+可以使用：
+
+- [wait-for-feedback-workflow.json](/Users/lee/LeeProject/flowforge/docs/wait-for-feedback-workflow.json)
+
+运行方式：
+
+1. 发布该 DSL
+2. 启动实例
+3. 实例会在 `WAIT_FOR_FEEDBACK` 节点进入 `PAUSED`
+4. 调用 `POST /api/instances/{id}/feedback`
+5. 实例恢复执行并继续往后跑
+
+## 其他 DSL 示例
+
+- [condition-workflow.json](/Users/lee/LeeProject/flowforge/docs/condition-workflow.json)
+- [rest-login-session-workflow.json](/Users/lee/LeeProject/flowforge/docs/rest-login-session-workflow.json)
+- [database-workflow.json](/Users/lee/LeeProject/flowforge/docs/database-workflow.json)
+- [digital-employee-workflow.json](/Users/lee/LeeProject/flowforge/docs/digital-employee-workflow.json)
+
+## REST 节点认证模式
+
+当前 `REST` 原子能力节点支持这些认证方式：
+
+- `none`
+- `basic`
+- `bearer_static`
+- `login_session`
+
+其中 `login_session` 适合：
+
+- 先登录拿 token / session
+- 再调用后续接口
+- 多个节点复用同一份会话
+
+做法是：
+
+1. 登录节点配置 `auth.type = login_session`
+2. 指定 `loginUrl`、`tokenPath`、`sessionContextKey`
+3. 登录成功后，会话会写入 `workflow_instance.context_json`
+4. 后续节点只要引用同一个 `sessionContextKey`，就会自动带上认证头
 
 ## 下一步建议
 

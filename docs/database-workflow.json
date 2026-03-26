@@ -1,0 +1,43 @@
+{
+  "dsl": {
+    "version": "1.0",
+    "nodes": [
+      {
+        "id": "start_1",
+        "name": "Start",
+        "type": "START",
+        "config": {}
+      },
+      {
+        "id": "db_query_1",
+        "name": "Query Workflow Count",
+        "type": "ATOMIC_ABILITY",
+        "config": {
+          "abilityType": "DATABASE",
+          "jdbcUrl": "jdbc:postgresql://localhost:5432/flowforge",
+          "username": "flowforge",
+          "password": "flowforge",
+          "operation": "QUERY",
+          "sql": "SELECT COUNT(*) AS workflow_count FROM workflow_definition"
+        }
+      },
+      {
+        "id": "end_1",
+        "name": "End",
+        "type": "END",
+        "config": {}
+      }
+    ],
+    "edges": [
+      {
+        "from": "start_1",
+        "to": "db_query_1"
+      },
+      {
+        "from": "db_query_1",
+        "to": "end_1"
+      }
+    ]
+  }
+}
+

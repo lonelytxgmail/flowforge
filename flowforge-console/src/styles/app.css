@@ -355,9 +355,43 @@ pre {
   margin: 8px 0;
 }
 
-.empty-state {
+.empty-state,
+.state-panel {
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.64);
+  padding: 16px;
+}
+
+.state-panel {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.state-panel strong,
+.empty-state strong {
+  display: block;
+}
+
+.state-panel p,
+.empty-state p {
+  margin: 6px 0 0;
+  color: var(--muted);
+}
+
+.state-panel-loading {
+  border-color: rgba(189, 125, 45, 0.28);
+  background: rgba(189, 125, 45, 0.08);
+}
+
+.state-panel-error {
+  border-color: rgba(184, 68, 68, 0.28);
+  background: rgba(184, 68, 68, 0.06);
+}
+
+.state-panel-empty {
   border-top: 1px solid var(--line);
-  padding-top: 16px;
 }
 
 .hero-strip-compact h1 {
@@ -429,6 +463,10 @@ pre {
   color: var(--muted);
   display: block;
   margin-top: 4px;
+}
+
+.state-panel-action {
+  flex-shrink: 0;
 }
 
 .form-grid-two,

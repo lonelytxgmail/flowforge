@@ -596,15 +596,16 @@ export function DslStructuredEditor({ dsl, onChange }: DslStructuredEditorProps)
                   value={String(auth.prefix ?? "")}
                 />
               </label>
-              <label className="field-block">
-                <span className="field-label">{t("dslEditor.authSessionKey")}</span>
-                <input
-                  className="text-input"
-                  onChange={(event) => updateAuth("sessionContextKey", event.target.value)}
-                  placeholder="authSession"
-                  value={String(auth.sessionContextKey ?? "")}
-                />
-              </label>
+            <label className="field-block">
+              <span className="field-label">{t("dslEditor.authSessionKey")}</span>
+              <input
+                className="text-input"
+                onChange={(event) => updateAuth("sessionContextKey", event.target.value)}
+                placeholder="authSession"
+                value={String(auth.sessionContextKey ?? "")}
+              />
+              <small>{t("dslEditor.authSessionKeyHint")}</small>
+            </label>
               <label className="field-block field-span-two">
                 <span className="field-label">{t("dslEditor.authLoginBody")}</span>
                 <textarea
@@ -658,6 +659,7 @@ export function DslStructuredEditor({ dsl, onChange }: DslStructuredEditorProps)
                 onChange={(event) => updateNodeConfig(node.id, "url", event.target.value)}
                 value={String(config.url ?? "")}
               />
+              <small>{t("dslEditor.restUrlHint")}</small>
             </label>
             <label className="field-block">
               <span className="field-label">{t("dslEditor.restMethod")}</span>
@@ -737,6 +739,7 @@ export function DslStructuredEditor({ dsl, onChange }: DslStructuredEditorProps)
                 onChange={(event) => updateNodeConfig(node.id, "sql", event.target.value)}
                 value={String(config.sql ?? "")}
               />
+              <small>{t("dslEditor.databaseSqlHint")}</small>
             </label>
           </div>
         ) : null}
@@ -988,6 +991,7 @@ export function DslStructuredEditor({ dsl, onChange }: DslStructuredEditorProps)
                   <label className="field-block">
                     <span className="field-label">{t("dslEditor.feedbackKey")}</span>
                     <input className="text-input" onChange={(event) => updateNodeConfig(node.id, "feedbackKey", event.target.value)} value={String(config.feedbackKey ?? "")} />
+                    <small>{t("dslEditor.feedbackKeyHint")}</small>
                   </label>
                 ) : null}
 

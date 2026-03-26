@@ -8,6 +8,7 @@ import { useAsyncData } from "../lib/hooks";
 import { useI18n } from "../lib/i18n";
 import { EmptyState } from "../components/EmptyState";
 import { Section } from "../components/Section";
+import { StatePanel } from "../components/StatePanel";
 import { StatusPill } from "../components/StatusPill";
 import type { WorkflowDsl } from "../lib/types";
 
@@ -138,8 +139,8 @@ export function WorkflowDetailPage() {
         description={workflow.data?.description ?? t("workflowDetail.descriptionFallback")}
         aside={workflow.data ? <StatusPill value={workflow.data.status} /> : null}
       >
-        {workflow.loading ? <p>{t("workflowDetail.loading")}</p> : null}
-        {workflow.error ? <p>{workflow.error}</p> : null}
+        {workflow.loading ? <StatePanel detail={t("workflowDetail.loadingDetail")} title={t("workflowDetail.loading")} tone="loading" /> : null}
+        {workflow.error ? <StatePanel detail={workflow.error} title={t("workflowDetail.errorTitle")} tone="error" /> : null}
         {workflow.data ? (
           <div className="definition-grid">
             <div>
@@ -160,6 +161,10 @@ export function WorkflowDetailPage() {
 
       <div className="grid-two grid-two-asymmetric">
         <Section title={t("workflowDetail.launchTitle")} description={t("workflowDetail.launchDescription")}>
+          <div className="hint-banner subtle">
+            <strong>{t("workflowDetail.launchHintTitle")}</strong>
+            <span>{t("workflowDetail.launchHintDetail")}</span>
+          </div>
           <form className="inline-form" onSubmit={handleStart}>
             <label className="field-block">
               <span className="field-label">{t("workflowDetail.inputPayload")}</span>
@@ -199,9 +204,9 @@ export function WorkflowDetailPage() {
 
       <Section title={t("workflowDetail.versionLedgerTitle")} description={t("workflowDetail.versionLedgerDescription")}>
         {versions.loading ? (
-          <p>{t("workflowDetail.loadingVersions")}</p>
+          <StatePanel detail={t("workflowDetail.loadingVersionsDetail")} title={t("workflowDetail.loadingVersions")} tone="loading" />
         ) : versions.error ? (
-          <p>{versions.error}</p>
+          <StatePanel detail={versions.error} title={t("workflowDetail.versionErrorTitle")} tone="error" />
         ) : !versions.data?.length ? (
           <EmptyState title={t("workflowDetail.noVersionsTitle")} detail={t("workflowDetail.noVersionsDetail")} />
         ) : (

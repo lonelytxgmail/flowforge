@@ -5,6 +5,7 @@ import { useAsyncData } from "../lib/hooks";
 import { useI18n } from "../lib/i18n";
 import { EmptyState } from "../components/EmptyState";
 import { Section } from "../components/Section";
+import { StatePanel } from "../components/StatePanel";
 import { StatusPill } from "../components/StatusPill";
 
 export function DashboardPage() {
@@ -51,9 +52,9 @@ export function DashboardPage() {
             </Link>
           </div>
           {workflows.loading ? (
-            <p>{t("dashboard.loadingWorkflows")}</p>
+            <StatePanel detail={t("dashboard.loadingWorkflowsDetail")} title={t("dashboard.loadingWorkflows")} tone="loading" />
           ) : workflows.error ? (
-            <p>{workflows.error}</p>
+            <StatePanel detail={workflows.error} title={t("dashboard.workflowsErrorTitle")} tone="error" />
           ) : workflowList.length === 0 ? (
             <EmptyState title={t("dashboard.noWorkflowsTitle")} detail={t("dashboard.noWorkflowsDetail")} />
           ) : (
@@ -79,9 +80,9 @@ export function DashboardPage() {
             </Link>
           </div>
           {instances.loading ? (
-            <p>{t("dashboard.loadingInstances")}</p>
+            <StatePanel detail={t("dashboard.loadingInstancesDetail")} title={t("dashboard.loadingInstances")} tone="loading" />
           ) : instances.error ? (
-            <p>{instances.error}</p>
+            <StatePanel detail={instances.error} title={t("dashboard.instancesErrorTitle")} tone="error" />
           ) : instanceList.length === 0 ? (
             <EmptyState title={t("dashboard.noInstancesTitle")} detail={t("dashboard.noInstancesDetail")} />
           ) : (

@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { EmptyState } from "../components/EmptyState";
 import { Section } from "../components/Section";
+import { StatePanel } from "../components/StatePanel";
 import { StatusPill } from "../components/StatusPill";
 import { formatDateTime } from "../lib/format";
 import { useAsyncData } from "../lib/hooks";
@@ -59,6 +60,10 @@ export function WorkflowsPage() {
       </section>
 
       <Section title={t("workflows.listTitle")} description={t("workflows.listDescription")}>
+        <div className="hint-banner subtle">
+          <strong>{t("workflows.hintTitle")}</strong>
+          <span>{t("workflows.hintDetail")}</span>
+        </div>
         <div className="filter-row">
           <label className="field-block">
             <span className="field-label">{t("workflows.search")}</span>
@@ -83,9 +88,9 @@ export function WorkflowsPage() {
         </div>
 
         {workflows.loading ? (
-          <p>{t("workflows.loading")}</p>
+          <StatePanel detail={t("workflows.loadingDetail")} title={t("workflows.loading")} tone="loading" />
         ) : workflows.error ? (
-          <p>{workflows.error}</p>
+          <StatePanel detail={workflows.error} title={t("workflows.errorTitle")} tone="error" />
         ) : filtered.length === 0 ? (
           <EmptyState title={t("workflows.emptyTitle")} detail={t("workflows.emptyDetail")} />
         ) : (

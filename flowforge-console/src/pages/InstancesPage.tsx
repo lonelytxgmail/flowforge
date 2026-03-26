@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { EmptyState } from "../components/EmptyState";
 import { Section } from "../components/Section";
+import { StatePanel } from "../components/StatePanel";
 import { StatusPill } from "../components/StatusPill";
 import { formatDateTime } from "../lib/format";
 import { useAsyncData } from "../lib/hooks";
@@ -56,6 +57,10 @@ export function InstancesPage() {
       </section>
 
       <Section title={t("instances.listTitle")} description={t("instances.listDescription")}>
+        <div className="hint-banner subtle">
+          <strong>{t("instances.hintTitle")}</strong>
+          <span>{t("instances.hintDetail")}</span>
+        </div>
         <div className="filter-row">
           <label className="field-block">
             <span className="field-label">{t("instances.search")}</span>
@@ -80,9 +85,9 @@ export function InstancesPage() {
         </div>
 
         {instances.loading ? (
-          <p>{t("instances.loading")}</p>
+          <StatePanel detail={t("instances.loadingDetail")} title={t("instances.loading")} tone="loading" />
         ) : instances.error ? (
-          <p>{instances.error}</p>
+          <StatePanel detail={instances.error} title={t("instances.errorTitle")} tone="error" />
         ) : filtered.length === 0 ? (
           <EmptyState title={t("instances.emptyTitle")} detail={t("instances.emptyDetail")} />
         ) : (

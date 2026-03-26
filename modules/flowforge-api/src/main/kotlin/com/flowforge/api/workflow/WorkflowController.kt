@@ -44,6 +44,7 @@ data class SaveNodeTemplateRequest(
     @field:NotBlank
     val name: String,
     val description: String?,
+    val groupName: String?,
     val nodeType: NodeType,
     val nodeConfig: Map<String, Any?>? = null
 )
@@ -128,6 +129,7 @@ class WorkflowController(
                 code = request.code,
                 name = request.name,
                 description = request.description,
+                groupName = request.groupName,
                 nodeType = request.nodeType,
                 nodeConfig = request.nodeConfig ?: emptyMap()
             )
@@ -144,6 +146,7 @@ class WorkflowController(
             code = request.code,
             name = request.name,
             description = request.description,
+            groupName = request.groupName,
             nodeType = request.nodeType,
             nodeConfig = request.nodeConfig ?: emptyMap()
         )

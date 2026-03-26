@@ -57,11 +57,13 @@ class WorkflowDefinitionService(
 
     fun saveNodeTemplate(command: SaveNodeTemplateCommand): NodeTemplate {
         validateNodeTemplate(command)
+        ensureTemplateCodeAvailable(command.code, null)
 
         val id = nodeTemplateRepository.save(
             code = command.code,
             name = command.name,
             description = command.description,
+            groupName = command.groupName?.trim()?.ifBlank { null },
             nodeType = command.nodeType,
             nodeConfig = command.nodeConfig
         )
@@ -83,6 +85,7 @@ class WorkflowDefinitionService(
                 code = command.code,
                 name = command.name,
                 description = command.description,
+                groupName = command.groupName,
                 nodeType = command.nodeType,
                 nodeConfig = command.nodeConfig
             )
@@ -90,12 +93,14 @@ class WorkflowDefinitionService(
 
         val existing = nodeTemplateRepository.findById(command.id)
             ?: throw AppException("Node template not found: ${command.id}")
+        ensureTemplateCodeAvailable(command.code, existing.id)
 
         nodeTemplateRepository.update(
             id = existing.id,
             code = command.code,
             name = command.name,
             description = command.description,
+            groupName = command.groupName?.trim()?.ifBlank { null },
             nodeType = command.nodeType,
             nodeConfig = command.nodeConfig
         )
@@ -116,9 +121,18 @@ class WorkflowDefinitionService(
      * 2. 节点 id 不能重复
      */
     private fun validateDsl(dsl: com.flowforge.workflow.domain.WorkflowDsl) {
+        if (dsl.version.isBlank()) {
+            throw AppException("DSL version is required")
+        }
+        if (dsl.nodes.isEmpty()) {
+            throw AppException("DSL must contain at least one node")
+        }
         val nodeIds = dsl.nodes.map { it.id }
         if (nodeIds.distinct().size != nodeIds.size) {
             throw AppException("Node ids must be unique")
+        }
+        if (nodeIds.any { it.isBlank() }) {
+            throw AppException("Node id cannot be blank")
         }
         if (dsl.nodes.none { it.type == NodeType.START }) {
             throw AppException("DSL must contain a START node")
@@ -126,9 +140,30 @@ class WorkflowDefinitionService(
         if (dsl.nodes.none { it.type == NodeType.END }) {
             throw AppException("DSL must contain an END node")
         }
+        if (dsl.nodes.count { it.type == NodeType.START } > 1) {
+            throw AppException("DSL can contain only one START node")
+        }
+        if (dsl.nodes.count { it.type == NodeType.END } > 1) {
+            throw AppException("DSL can contain only one END node")
+        }
+        val nodeIdSet = nodeIds.toSet()
+        dsl.edges.forEachIndexed { index, edge ->
+            if (!nodeIdSet.contains(edge.from)) {
+                throw AppException("Edge ${index + 1} references unknown source node: ${edge.from}")
+            }
+            if (!nodeIdSet.contains(edge.to)) {
+                throw AppException("Edge ${index + 1} references unknown target node: ${edge.to}")
+            }
+        }
     }
 
     private fun validateNodeTemplate(command: SaveNodeTemplateCommand) {
+        if (command.code.isBlank()) {
+            throw AppException("Node template code is required")
+        }
+        if (command.name.isBlank()) {
+            throw AppException("Node template name is required")
+        }
         when (command.nodeType) {
             NodeType.START, NodeType.END -> {
                 if (command.nodeConfig.isNotEmpty()) {
@@ -144,6 +179,13 @@ class WorkflowDefinitionService(
             }
             NodeType.DIGITAL_EMPLOYEE, NodeType.CONDITION, NodeType.WAIT_FOR_FEEDBACK,
             NodeType.LLM, NodeType.AGENT, NodeType.TOOL -> return
+        }
+    }
+
+    private fun ensureTemplateCodeAvailable(code: String, currentId: Long?) {
+        val existing = nodeTemplateRepository.findByCode(code) ?: return
+        if (currentId == null || existing.id != currentId) {
+            throw AppException("Node template code already exists: $code")
         }
     }
 }

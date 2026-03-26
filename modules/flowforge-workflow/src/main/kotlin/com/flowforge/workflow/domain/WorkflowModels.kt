@@ -55,6 +55,7 @@ data class NodeTemplate(
     val code: String,
     val name: String,
     val description: String?,
+    val groupName: String?,
     val nodeType: NodeType,
     val nodeConfig: Map<String, Any?>,
     val createdAt: LocalDateTime,

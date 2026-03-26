@@ -209,19 +209,24 @@ export function InstanceDetailPage() {
             <p>{t("instanceDetail.loadingEvents")}</p>
           ) : events.error ? (
             <p>{events.error}</p>
-          ) : (
-            <div className="event-stream">
-              {(events.data ?? []).map((event) => (
+        ) : (
+          <div className="event-stream">
+            {(events.data ?? []).length === 0 ? (
+              <EmptyState title={t("instanceDetail.noEventsTitle")} detail={t("instanceDetail.noEventsDetail")} />
+            ) : (
+              (events.data ?? []).map((event) => (
                 <div className="event-row" key={event.id}>
                   <div>
                     <strong>{event.eventType}</strong>
                     <span>{event.eventMessage}</span>
+                    {event.eventDetail ? <pre>{formatJson(event.eventDetail)}</pre> : null}
                   </div>
                   <span>{formatDateTime(event.createdAt)}</span>
                 </div>
-              ))}
-            </div>
-          )}
+              ))
+            )}
+          </div>
+        )}
 
           <div className="separator" />
 

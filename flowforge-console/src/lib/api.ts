@@ -17,6 +17,24 @@ import type {
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080";
 
+async function parseErrorMessage(response: Response): Promise<string> {
+  const contentType = response.headers.get("content-type") ?? "";
+
+  if (contentType.includes("application/json")) {
+    try {
+      const payload = (await response.json()) as { message?: string };
+      if (payload.message) {
+        return payload.message;
+      }
+    } catch {
+      return `Request failed: ${response.status}`;
+    }
+  }
+
+  const errorText = await response.text();
+  return errorText || `Request failed: ${response.status}`;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     headers: {
@@ -27,8 +45,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
 
   if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(errorText || `Request failed: ${response.status}`);
+    throw new Error(await parseErrorMessage(response));
   }
 
   return (await response.json()) as T;

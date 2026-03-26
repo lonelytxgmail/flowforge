@@ -189,19 +189,21 @@ class NodeTemplateRepository(
         code: String,
         name: String,
         description: String?,
+        groupName: String?,
         nodeType: NodeType,
         nodeConfig: Map<String, Any?>
     ): Long =
         jdbcClient.sql(
             """
-            INSERT INTO node_template(code, name, description, node_type, node_config, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            INSERT INTO node_template(code, name, description, group_name, node_type, node_config, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
             RETURNING id
             """
         )
             .param(code)
             .param(name)
             .param(description)
+            .param(groupName)
             .param(nodeType.name)
             .param(objectMapper.toJsonb(nodeConfig))
             .query(Long::class.java)
@@ -212,19 +214,21 @@ class NodeTemplateRepository(
         code: String,
         name: String,
         description: String?,
+        groupName: String?,
         nodeType: NodeType,
         nodeConfig: Map<String, Any?>
     ) {
         jdbcClient.sql(
             """
             UPDATE node_template
-            SET code = ?, name = ?, description = ?, node_type = ?, node_config = ?, updated_at = CURRENT_TIMESTAMP
+            SET code = ?, name = ?, description = ?, group_name = ?, node_type = ?, node_config = ?, updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
             """
         )
             .param(code)
             .param(name)
             .param(description)
+            .param(groupName)
             .param(nodeType.name)
             .param(objectMapper.toJsonb(nodeConfig))
             .param(id)
@@ -234,7 +238,7 @@ class NodeTemplateRepository(
     fun findById(id: Long): NodeTemplate? =
         jdbcClient.sql(
             """
-            SELECT id, code, name, description, node_type, node_config, created_at, updated_at
+            SELECT id, code, name, description, group_name, node_type, node_config, created_at, updated_at
             FROM node_template
             WHERE id = ?
             """
@@ -244,12 +248,25 @@ class NodeTemplateRepository(
             .optional()
             .orElse(null)
 
+    fun findByCode(code: String): NodeTemplate? =
+        jdbcClient.sql(
+            """
+            SELECT id, code, name, description, group_name, node_type, node_config, created_at, updated_at
+            FROM node_template
+            WHERE code = ?
+            """
+        )
+            .param(code)
+            .query { rs, _ -> mapNodeTemplate(rs) }
+            .optional()
+            .orElse(null)
+
     fun findAll(): List<NodeTemplate> =
         jdbcClient.sql(
             """
-            SELECT id, code, name, description, node_type, node_config, created_at, updated_at
+            SELECT id, code, name, description, group_name, node_type, node_config, created_at, updated_at
             FROM node_template
-            ORDER BY id DESC
+            ORDER BY COALESCE(group_name, ''), id DESC
             """
         )
             .query { rs, _ -> mapNodeTemplate(rs) }
@@ -267,6 +284,7 @@ class NodeTemplateRepository(
             code = rs.getString("code"),
             name = rs.getString("name"),
             description = rs.getString("description"),
+            groupName = rs.getString("group_name"),
             nodeType = NodeType.valueOf(rs.getString("node_type")),
             nodeConfig = objectMapper.readValue(
                 rs.getString("node_config"),

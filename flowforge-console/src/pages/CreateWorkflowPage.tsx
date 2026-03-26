@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { DslStructuredEditor } from "../components/DslStructuredEditor";
 import { Section } from "../components/Section";
 import { api, starterDslExamples } from "../lib/api";
+import { validateWorkflowDsl } from "../lib/dsl";
 import { prettyJson, tryParseJson } from "../lib/format";
 import { useI18n } from "../lib/i18n";
 import type { WorkflowDsl } from "../lib/types";
@@ -50,8 +51,14 @@ export function CreateWorkflowPage() {
     const parsed = tryParseJson<WorkflowDsl>(dslText);
 
     if (parsed.data) {
-      setDslCheckMessage(t("createWorkflow.validDsl"));
-      setDslCheckError(null);
+      const issues = validateWorkflowDsl(parsed.data).filter((issue) => issue.level === "error");
+      if (issues.length === 0) {
+        setDslCheckMessage(t("createWorkflow.validDsl"));
+        setDslCheckError(null);
+        return;
+      }
+      setDslCheckMessage(null);
+      setDslCheckError(issues.map((issue) => issue.message).join("；"));
       return;
     }
 
@@ -76,6 +83,10 @@ export function CreateWorkflowPage() {
         const parsedDsl = tryParseJson<WorkflowDsl>(dslText);
         if (!parsedDsl.data) {
           throw new Error(`${t("createWorkflow.invalidDsl")} ${parsedDsl.error}`);
+        }
+        const issues = validateWorkflowDsl(parsedDsl.data).filter((issue) => issue.level === "error");
+        if (issues.length > 0) {
+          throw new Error(issues.map((issue) => issue.message).join("；"));
         }
 
         const dsl = parsedDsl.data;

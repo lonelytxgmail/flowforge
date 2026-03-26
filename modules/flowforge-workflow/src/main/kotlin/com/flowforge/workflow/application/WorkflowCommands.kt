@@ -23,6 +23,7 @@ data class SaveNodeTemplateCommand(
     @field:NotBlank
     val name: String,
     val description: String?,
+    val groupName: String?,
     val nodeType: NodeType,
     val nodeConfig: Map<String, Any?> = emptyMap()
 )
@@ -34,6 +35,7 @@ data class UpdateNodeTemplateCommand(
     @field:NotBlank
     val name: String,
     val description: String?,
+    val groupName: String?,
     val nodeType: NodeType,
     val nodeConfig: Map<String, Any?> = emptyMap()
 )

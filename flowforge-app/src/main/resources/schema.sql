@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS node_template (
     code VARCHAR(128) NOT NULL UNIQUE,
     name VARCHAR(256) NOT NULL,
     description TEXT,
+    group_name VARCHAR(128),
     node_type VARCHAR(64) NOT NULL,
     node_config JSONB NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -38,6 +39,12 @@ CREATE TABLE IF NOT EXISTS node_template (
 
 CREATE INDEX IF NOT EXISTS idx_node_template_node_type
     ON node_template(node_type);
+
+CREATE INDEX IF NOT EXISTS idx_node_template_group_name
+    ON node_template(group_name);
+
+ALTER TABLE node_template
+    ADD COLUMN IF NOT EXISTS group_name VARCHAR(128);
 
 -- 实例表：某个工作流版本的一次运行
 CREATE TABLE IF NOT EXISTS workflow_instance (

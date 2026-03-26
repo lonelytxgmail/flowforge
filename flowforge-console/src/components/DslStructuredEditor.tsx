@@ -1,6 +1,7 @@
-import type { ChangeEvent } from "react";
-import { useMemo, useState } from "react";
+import type { ChangeEvent, FocusEvent } from "react";
+import { useMemo, useRef, useState } from "react";
 import { api } from "../lib/api";
+import { validateWorkflowDsl } from "../lib/dsl";
 import { prettyJson, tryParseJson } from "../lib/format";
 import { useAsyncData } from "../lib/hooks";
 import { useI18n } from "../lib/i18n";
@@ -107,75 +108,12 @@ function withDefaultStringMap(value: unknown): Record<string, string> {
   }, {});
 }
 
-function validateDsl(dsl: WorkflowDsl): string[] {
-  const issues: string[] = [];
-  const nodes = dsl.nodes.map(normalizeNode);
-  const nodeIds = nodes.map((node) => node.id.trim());
-  const uniqueIds = new Set(nodeIds);
-
-  if (nodes.length === 0) {
-    issues.push("至少需要一个节点。");
-  }
-  if (nodeIds.some((id) => id.length === 0)) {
-    issues.push("节点 ID 不能为空。");
-  }
-  if (uniqueIds.size !== nodeIds.length) {
-    issues.push("节点 ID 不能重复。");
-  }
-  if (!nodes.some((node) => node.type === "START")) {
-    issues.push("DSL 必须包含 START 节点。");
-  }
-  if (!nodes.some((node) => node.type === "END")) {
-    issues.push("DSL 必须包含 END 节点。");
+function supportsInlineInsertion(target: HTMLInputElement | HTMLTextAreaElement): boolean {
+  if (target instanceof HTMLTextAreaElement) {
+    return true;
   }
 
-  const nodeIdSet = new Set(nodeIds);
-  dsl.edges.forEach((edge, index) => {
-    if (!nodeIdSet.has(edge.from)) {
-      issues.push(`连线 ${index + 1} 的起点节点不存在: ${edge.from}`);
-    }
-    if (!nodeIdSet.has(edge.to)) {
-      issues.push(`连线 ${index + 1} 的目标节点不存在: ${edge.to}`);
-    }
-  });
-
-  nodes.forEach((node) => {
-    const config = (node.config ?? {}) as Record<string, unknown>;
-    if (node.type === "ATOMIC_ABILITY") {
-      const abilityType = String(config.abilityType ?? "MOCK");
-      if (abilityType === "REST" && !String(config.url ?? "").trim()) {
-        issues.push(`节点 ${node.id} 缺少 REST URL。`);
-      }
-      if (abilityType === "DATABASE" && !String(config.jdbcUrl ?? "").trim()) {
-        issues.push(`节点 ${node.id} 缺少 JDBC URL。`);
-      }
-      if (abilityType === "DATABASE" && !String(config.sql ?? "").trim()) {
-        issues.push(`节点 ${node.id} 缺少 SQL。`);
-      }
-      if (abilityType === "REDIS" && !String(config.host ?? "").trim()) {
-        issues.push(`节点 ${node.id} 缺少 Redis Host。`);
-      }
-      if (abilityType === "ELASTICSEARCH" && !String(config.url ?? "").trim()) {
-        issues.push(`节点 ${node.id} 缺少 Elasticsearch URL。`);
-      }
-      if (abilityType === "KAFKA" && !String(config.bootstrapServers ?? "").trim()) {
-        issues.push(`节点 ${node.id} 缺少 Kafka Servers。`);
-      }
-      if (abilityType === "KAFKA" && !String(config.topic ?? "").trim()) {
-        issues.push(`节点 ${node.id} 缺少 Kafka Topic。`);
-      }
-    }
-
-    if (node.type === "DIGITAL_EMPLOYEE" && !String(config.url ?? "").trim()) {
-      issues.push(`节点 ${node.id} 缺少数字员工接口地址。`);
-    }
-
-    if (node.type === "WAIT_FOR_FEEDBACK" && !String(config.feedbackKey ?? "").trim()) {
-      issues.push(`节点 ${node.id} 缺少反馈键。`);
-    }
-  });
-
-  return issues;
+  return ["text", "search", "url", "tel", "password", "email", "number"].includes(target.type || "text");
 }
 
 export function DslStructuredEditor({ dsl, onChange }: DslStructuredEditorProps) {
@@ -184,26 +122,32 @@ export function DslStructuredEditor({ dsl, onChange }: DslStructuredEditorProps)
   const [templateMessage, setTemplateMessage] = useState<string | null>(null);
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
   const [templateFilter, setTemplateFilter] = useState("");
+  const [templateGroupFilter, setTemplateGroupFilter] = useState("ALL");
+  const lastFocusedFieldRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
 
   const normalizedDsl: WorkflowDsl = {
     version: dsl.version || "1.0",
     nodes: dsl.nodes.map(normalizeNode),
     edges: dsl.edges.map(normalizeEdge),
   };
-  const validationIssues = useMemo(() => validateDsl(normalizedDsl), [normalizedDsl]);
+  const validationIssues = useMemo(() => validateWorkflowDsl(normalizedDsl), [normalizedDsl]);
+  const templateGroups = useMemo(() => {
+    const groups = (templates.data ?? [])
+      .map((template) => template.groupName?.trim())
+      .filter((group): group is string => Boolean(group));
+    return ["ALL", ...Array.from(new Set(groups))];
+  }, [templates.data]);
   const filteredTemplates = useMemo(() => {
     const keyword = templateFilter.trim().toLowerCase();
     const items = templates.data ?? [];
-    if (!keyword) {
-      return items;
-    }
     return items.filter((template) =>
-      [template.name, template.code, template.nodeType, template.description ?? ""]
+      (templateGroupFilter === "ALL" || template.groupName === templateGroupFilter) &&
+      [template.name, template.code, template.nodeType, template.description ?? "", template.groupName ?? ""]
         .join(" ")
         .toLowerCase()
         .includes(keyword)
     );
-  }, [templateFilter, templates.data]);
+  }, [templateFilter, templateGroupFilter, templates.data]);
 
   function patch(next: Partial<WorkflowDsl>) {
     onChange({
@@ -403,6 +347,7 @@ export function DslStructuredEditor({ dsl, onChange }: DslStructuredEditorProps)
         code: `${node.type.toLowerCase()}_${timestamp}`,
         name: node.name,
         description: `Saved from structured editor at ${new Date(timestamp).toISOString()}`,
+        groupName: "structured-editor",
         nodeType: node.type,
         nodeConfig: (node.config as Record<string, unknown> | undefined) ?? {},
       });
@@ -413,7 +358,37 @@ export function DslStructuredEditor({ dsl, onChange }: DslStructuredEditorProps)
     }
   }
 
-  async function copyVariableToken(token: string) {
+  function rememberFocusedField(event: FocusEvent<HTMLDivElement>) {
+    const target = event.target;
+    if ((target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) && supportsInlineInsertion(target)) {
+      lastFocusedFieldRef.current = target;
+    }
+  }
+
+  async function insertVariableToken(token: string) {
+    const target = lastFocusedFieldRef.current;
+    if (!target) {
+      try {
+        await navigator.clipboard.writeText(token);
+        setCopiedToken(token);
+      } catch {
+        setCopiedToken(null);
+      }
+      return;
+    }
+
+    const start = target.selectionStart ?? target.value.length;
+    const end = target.selectionEnd ?? target.value.length;
+    const nextValue = `${target.value.slice(0, start)}${token}${target.value.slice(end)}`;
+    const nativeSetter = Object.getOwnPropertyDescriptor(target.constructor.prototype, "value")?.set;
+    nativeSetter?.call(target, nextValue);
+    target.dispatchEvent(new Event("input", { bubbles: true }));
+    target.focus();
+    const cursor = start + token.length;
+    if ("setSelectionRange" in target) {
+      target.setSelectionRange(cursor, cursor);
+    }
+
     try {
       await navigator.clipboard.writeText(token);
       setCopiedToken(token);
@@ -429,7 +404,7 @@ export function DslStructuredEditor({ dsl, onChange }: DslStructuredEditorProps)
           <button
             className="ghost-button compact"
             key={token.key}
-            onClick={() => copyVariableToken(token.example)}
+            onClick={() => insertVariableToken(token.example)}
             type="button"
           >
             {t(`dslEditor.variable${token.key[0].toUpperCase()}${token.key.slice(1)}`)}
@@ -909,7 +884,7 @@ export function DslStructuredEditor({ dsl, onChange }: DslStructuredEditorProps)
   }
 
   return (
-    <div className="structured-editor">
+    <div className="structured-editor" onFocusCapture={rememberFocusedField}>
       <div className="structured-editor-panel">
         <div className="structured-editor-header">
           <div>
@@ -940,13 +915,23 @@ export function DslStructuredEditor({ dsl, onChange }: DslStructuredEditorProps)
               value={templateFilter}
             />
           </label>
+          <label className="field-block">
+            <span className="field-label">{t("dslEditor.templateGroupFilter")}</span>
+            <select className="text-input select-input" onChange={(event) => setTemplateGroupFilter(event.target.value)} value={templateGroupFilter}>
+              {templateGroups.map((group) => (
+                <option key={group} value={group}>
+                  {group === "ALL" ? t("dslEditor.templateAllGroups") : group}
+                </option>
+              ))}
+            </select>
+          </label>
           {!templates.loading && !filteredTemplates.length ? (
             <p className="structured-editor-note">{t("dslEditor.templateEmpty")}</p>
           ) : (
             <div className="preset-row">
               {filteredTemplates.slice(0, 16).map((template) => (
                 <button className="ghost-button compact" key={template.id} onClick={() => addNodeFromTemplate(template)} type="button">
-                  {template.name}
+                  {template.groupName ? `${template.groupName} / ${template.name}` : template.name}
                 </button>
               ))}
             </div>
@@ -1026,7 +1011,9 @@ export function DslStructuredEditor({ dsl, onChange }: DslStructuredEditorProps)
           ) : (
             <ul className="validation-list">
               {validationIssues.map((issue) => (
-                <li key={issue}>{issue}</li>
+                <li key={issue.message}>
+                  {issue.level === "warning" ? t("dslEditor.validationWarningLabel") : t("dslEditor.validationErrorLabel")}: {issue.message}
+                </li>
               ))}
             </ul>
           )}

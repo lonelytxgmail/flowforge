@@ -11,6 +11,7 @@ type FormState = {
   code: string;
   name: string;
   description: string;
+  groupName: string;
   nodeType: string;
   nodeConfigText: string;
 };
@@ -34,6 +35,7 @@ const emptyForm: FormState = {
   code: "",
   name: "",
   description: "",
+  groupName: "",
   nodeType: "ATOMIC_ABILITY",
   nodeConfigText: "{\n  \"abilityType\": \"REST\",\n  \"url\": \"http://localhost:8080/api/mock/echo\",\n  \"method\": \"POST\"\n}",
 };
@@ -59,6 +61,7 @@ function mapTemplateToForm(template: NodeTemplate): FormState {
     code: template.code,
     name: template.name,
     description: template.description ?? "",
+    groupName: template.groupName ?? "",
     nodeType: template.nodeType,
     nodeConfigText: prettyJson(template.nodeConfig),
   };
@@ -68,7 +71,9 @@ export function NodeTemplatesPage() {
   const { t } = useI18n();
   const templates = useAsyncData(() => api.listNodeTemplates(), []);
   const [selectedType, setSelectedType] = useState("ALL");
+  const [selectedGroup, setSelectedGroup] = useState("ALL");
   const [searchText, setSearchText] = useState("");
+  const [importStrategy, setImportStrategy] = useState<"SKIP" | "OVERWRITE">("SKIP");
   const [form, setForm] = useState<FormState>(emptyForm);
   const [presetForm, setPresetForm] = useState<EnvironmentPresetForm>(emptyPresetForm);
   const [message, setMessage] = useState<string | null>(null);
@@ -79,15 +84,23 @@ export function NodeTemplatesPage() {
     const data = templates.data ?? [];
     return data.filter((item) => {
       const matchesType = selectedType === "ALL" || item.nodeType === selectedType;
+      const matchesGroup = selectedGroup === "ALL" || item.groupName === selectedGroup;
       const keyword = searchText.trim().toLowerCase();
       const matchesSearch =
         keyword.length === 0 ||
         item.name.toLowerCase().includes(keyword) ||
         item.code.toLowerCase().includes(keyword) ||
+        (item.groupName ?? "").toLowerCase().includes(keyword) ||
         (item.description ?? "").toLowerCase().includes(keyword);
-      return matchesType && matchesSearch;
+      return matchesType && matchesGroup && matchesSearch;
     });
-  }, [searchText, selectedType, templates.data]);
+  }, [searchText, selectedGroup, selectedType, templates.data]);
+  const groups = useMemo(() => {
+    const values = (templates.data ?? [])
+      .map((item) => item.groupName?.trim())
+      .filter((group): group is string => Boolean(group));
+    return ["ALL", ...Array.from(new Set(values))];
+  }, [templates.data]);
 
   function loadTemplate(template: NodeTemplate) {
     setForm(mapTemplateToForm(template));
@@ -110,6 +123,7 @@ export function NodeTemplatesPage() {
       code: form.code,
       name: form.name,
       description: form.description || undefined,
+      groupName: form.groupName || undefined,
       nodeType: form.nodeType,
       nodeConfig: parsed.data,
     };
@@ -147,12 +161,14 @@ export function NodeTemplatesPage() {
 
   async function importPresetPack() {
     const templatesToCreate: SaveNodeTemplateRequest[] = [];
+    const existingByCode = new Map((templates.data ?? []).map((template) => [template.code, template]));
 
     if (presetForm.mysqlJdbcUrl.trim()) {
       templatesToCreate.push({
         code: "preset_mysql_query_runtime",
         name: "MySQL Query Preset",
         description: "Query MySQL and support runtime variable substitution in SQL.",
+        groupName: "environment-presets",
         nodeType: "ATOMIC_ABILITY",
         nodeConfig: {
           abilityType: "DATABASE",
@@ -171,6 +187,7 @@ export function NodeTemplatesPage() {
           code: "preset_redis_get_runtime",
           name: "Redis Get Preset",
           description: "Read Redis values with runtime variable keys.",
+          groupName: "environment-presets",
           nodeType: "ATOMIC_ABILITY",
           nodeConfig: {
             abilityType: "REDIS",
@@ -185,6 +202,7 @@ export function NodeTemplatesPage() {
           code: "preset_redis_set_runtime",
           name: "Redis Set Preset",
           description: "Write Redis values with runtime variable keys and values.",
+          groupName: "environment-presets",
           nodeType: "ATOMIC_ABILITY",
           nodeConfig: {
             abilityType: "REDIS",
@@ -204,6 +222,7 @@ export function NodeTemplatesPage() {
         code: "preset_es_health_runtime",
         name: "Elasticsearch Health Preset",
         description: "Call Elasticsearch health endpoint with reusable credentials.",
+        groupName: "environment-presets",
         nodeType: "ATOMIC_ABILITY",
         nodeConfig: {
           abilityType: "ELASTICSEARCH",
@@ -221,6 +240,7 @@ export function NodeTemplatesPage() {
         code: "preset_sso_login_session",
         name: "SSO Login Session Preset",
         description: "Login session REST template for chained operations.",
+        groupName: "environment-presets",
         nodeType: "ATOMIC_ABILITY",
         nodeConfig: {
           abilityType: "REST",
@@ -255,9 +275,23 @@ export function NodeTemplatesPage() {
     setImportingPresets(true);
     try {
       for (const template of templatesToCreate) {
-        await api.saveNodeTemplate(template);
+        const existing = existingByCode.get(template.code);
+        if (!existing) {
+          await api.saveNodeTemplate(template);
+          continue;
+        }
+        if (importStrategy === "OVERWRITE") {
+          await api.updateNodeTemplate(String(existing.id), template);
+        }
       }
-      setMessage(t("templates.importSuccess", { count: templatesToCreate.length }));
+      setMessage(
+        t("templates.importSuccess", {
+          count:
+            importStrategy === "OVERWRITE"
+              ? templatesToCreate.length
+              : templatesToCreate.filter((template) => !existingByCode.has(template.code)).length,
+        })
+      );
       templates.reload();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t("templates.importFailed"));
@@ -307,6 +341,16 @@ export function NodeTemplatesPage() {
                 <option value="CONDITION">CONDITION</option>
               </select>
             </label>
+            <label className="field-block">
+              <span className="field-label">{t("templates.groupFilter")}</span>
+              <select className="text-input select-input" onChange={(event) => setSelectedGroup(event.target.value)} value={selectedGroup}>
+                {groups.map((group) => (
+                  <option key={group} value={group}>
+                    {group === "ALL" ? t("templates.allGroups") : group}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
 
           <div className="registry-list">
@@ -317,6 +361,7 @@ export function NodeTemplatesPage() {
                 <div>
                   <strong>{template.name}</strong>
                   <p>{template.code}</p>
+                  <p>{template.groupName ?? t("templates.noGroup")}</p>
                   <p>{template.nodeType}</p>
                 </div>
                 <div className="preset-row">
@@ -356,6 +401,10 @@ export function NodeTemplatesPage() {
               <input className="text-input" onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} value={form.description} />
             </label>
             <label className="field-block">
+              <span className="field-label">{t("templates.groupName")}</span>
+              <input className="text-input" onChange={(event) => setForm((current) => ({ ...current, groupName: event.target.value }))} value={form.groupName} />
+            </label>
+            <label className="field-block">
               <span className="field-label">{t("templates.nodeType")}</span>
               <select className="text-input select-input" onChange={(event) => setForm((current) => ({ ...current, nodeType: event.target.value }))} value={form.nodeType}>
                 <option value="START">START</option>
@@ -391,6 +440,13 @@ export function NodeTemplatesPage() {
           </div>
 
           <div className="form-grid-two">
+            <label className="field-block field-span-two">
+              <span className="field-label">{t("templates.importStrategy")}</span>
+              <select className="text-input select-input" onChange={(event) => setImportStrategy(event.target.value as "SKIP" | "OVERWRITE")} value={importStrategy}>
+                <option value="SKIP">{t("templates.importStrategySkip")}</option>
+                <option value="OVERWRITE">{t("templates.importStrategyOverwrite")}</option>
+              </select>
+            </label>
             <label className="field-block field-span-two">
               <span className="field-label">{t("templates.mysqlJdbcUrl")}</span>
               <input className="text-input" onChange={(event) => setPresetForm((current) => ({ ...current, mysqlJdbcUrl: event.target.value }))} value={presetForm.mysqlJdbcUrl} />

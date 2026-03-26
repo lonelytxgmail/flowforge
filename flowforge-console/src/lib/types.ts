@@ -113,6 +113,7 @@ export type NodeTemplate = {
   code: string;
   name: string;
   description?: string | null;
+  groupName?: string | null;
   nodeType: string;
   nodeConfig: Record<string, unknown>;
   createdAt: string;
@@ -123,6 +124,7 @@ export type SaveNodeTemplateRequest = {
   code: string;
   name: string;
   description?: string;
+  groupName?: string;
   nodeType: string;
   nodeConfig?: Record<string, unknown>;
 };

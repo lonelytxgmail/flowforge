@@ -78,6 +78,26 @@ export type ExecutionEvent = {
   createdAt: string;
 };
 
+export type WorkflowTask = {
+  id: number;
+  workflowInstanceId: number;
+  nodeId: string;
+  status: string;
+  attemptNo: number;
+  sourceTaskId?: number | null;
+  inputJson?: string | null;
+  retryReason?: string | null;
+  availableAt: string;
+  lockedAt?: string | null;
+  lockOwner?: string | null;
+  errorMessage?: string | null;
+  maxAttempts: number;
+  timeoutSeconds?: number | null;
+  retryBackoffSeconds?: number | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type FeedbackRecord = {
   id: number;
   workflowInstanceId: number;
@@ -106,6 +126,10 @@ export type FeedbackRequest = {
   feedbackType?: string;
   feedbackPayload?: Record<string, unknown>;
   createdBy?: string;
+};
+
+export type RetryTaskRequest = {
+  reason?: string;
 };
 
 export type NodeTemplate = {

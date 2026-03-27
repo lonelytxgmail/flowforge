@@ -125,6 +125,13 @@ export function DslStructuredEditor({ dsl, onChange }: DslStructuredEditorProps)
   const [templateGroupFilter, setTemplateGroupFilter] = useState("ALL");
   const lastFocusedFieldRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
 
+  const [testInputs, setTestInputs] = useState<Record<string, string>>({});
+  const [testResults, setTestResults] = useState<Record<string, any>>({});
+  const [testingNodes, setTestingNodes] = useState<Record<string, boolean>>({});
+  const [testErrors, setTestErrors] = useState<Record<string, string | null>>({});
+
+  const [jsonDrafts, setJsonDrafts] = useState<Record<string, string>>({});
+
   const normalizedDsl: WorkflowDsl = {
     version: dsl.version || "1.0",
     nodes: dsl.nodes.map(normalizeNode),
@@ -154,6 +161,37 @@ export function DslStructuredEditor({ dsl, onChange }: DslStructuredEditorProps)
       ...normalizedDsl,
       ...next,
     });
+  }
+
+  async function runDebugNode(node: WorkflowDslNode) {
+    try {
+      setTestingNodes(prev => ({ ...prev, [node.id]: true }));
+      setTestErrors(prev => ({ ...prev, [node.id]: null }));
+      
+      const inputPayloadStr = testInputs[node.id] || "{}";
+      const parsedInput = tryParseJson<Record<string, unknown>>(inputPayloadStr);
+      if (!parsedInput.data && inputPayloadStr.trim() !== "") {
+        throw new Error(`Invalid Input JSON: ${parsedInput.error}`);
+      }
+
+      const stepOutputs: Record<string, any> = {};
+      for (const [nid, res] of Object.entries(testResults)) {
+         stepOutputs[nid] = { output: res?.output ?? res };
+      }
+
+      const response = await api.runNodeDebug({
+        nodeType: node.type,
+        nodeConfig: (node.config as Record<string, unknown> | undefined) ?? {},
+        inputPayload: parsedInput.data ?? {},
+        workflowContext: { steps: stepOutputs }
+      });
+
+      setTestResults(prev => ({ ...prev, [node.id]: response }));
+    } catch (error) {
+      setTestErrors(prev => ({ ...prev, [node.id]: error instanceof Error ? error.message : String(error) }));
+    } finally {
+      setTestingNodes(prev => ({ ...prev, [node.id]: false }));
+    }
   }
 
   function addNode(type: NodeTemplateType) {
@@ -284,6 +322,15 @@ export function DslStructuredEditor({ dsl, onChange }: DslStructuredEditorProps)
   }
 
   function updateNodeConfig(nodeId: string, key: string, value: unknown) {
+    // 强制清除之前的草稿残留（如果有合规的数据）
+    const draftKey = `${nodeId}-${key}`;
+    if (jsonDrafts[draftKey] !== undefined) {
+      setJsonDrafts(prev => {
+        const next = { ...prev };
+        delete next[draftKey];
+        return next;
+      });
+    }
     patch({
       nodes: updateNode(normalizedDsl.nodes, nodeId, (node) => {
         const nextConfig = {
@@ -301,16 +348,43 @@ export function DslStructuredEditor({ dsl, onChange }: DslStructuredEditorProps)
     });
   }
 
-  function updateJsonConfig(nodeId: string, key: string, value: string) {
+  function handleJsonChange(nodeId: string, key: string, value: string) {
+    const draftKey = `${nodeId}-${key}`;
+    setJsonDrafts(prev => ({ ...prev, [draftKey]: value }));
+
     if (value.trim() === "") {
-      updateNodeConfig(nodeId, key, undefined);
+      patch({
+        nodes: updateNode(normalizedDsl.nodes, nodeId, (node) => {
+          const nextConfig = { ...(node.config ?? {}) };
+          delete nextConfig[key];
+          return { ...node, config: nextConfig };
+        })
+      });
       return;
     }
 
     const parsed = tryParseJson<unknown>(value);
     if (parsed.data !== undefined) {
-      updateNodeConfig(nodeId, key, parsed.data);
+      patch({
+        nodes: updateNode(normalizedDsl.nodes, nodeId, (node) => {
+          return {
+            ...node,
+            config: {
+              ...(node.config ?? {}),
+              [key]: parsed.data,
+            }
+          };
+        })
+      });
     }
+  }
+
+  function getJsonValue(nodeId: string, key: string, realValue: unknown): string {
+    const draftKey = `${nodeId}-${key}`;
+    if (jsonDrafts[draftKey] !== undefined) {
+      return jsonDrafts[draftKey];
+    }
+    return stringifyObject(realValue);
   }
 
   function addEdge() {
@@ -483,6 +557,9 @@ export function DslStructuredEditor({ dsl, onChange }: DslStructuredEditorProps)
     }
 
     function updateAuthJson(key: string, rawValue: string) {
+      const draftKey = `${nodeId}-auth-${key}`;
+      setJsonDrafts(prev => ({ ...prev, [draftKey]: rawValue }));
+
       if (rawValue.trim() === "") {
         updateAuth(key, undefined);
         return;
@@ -607,11 +684,14 @@ export function DslStructuredEditor({ dsl, onChange }: DslStructuredEditorProps)
               <small>{t("dslEditor.authSessionKeyHint")}</small>
             </label>
               <label className="field-block field-span-two">
-                <span className="field-label">{t("dslEditor.authLoginBody")}</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                  <span className="field-label" style={{ marginBottom: 0 }}>{t("dslEditor.authLoginBody")}</span>
+                  <VariablePicker testResults={testResults} t={t} onSelect={(v) => updateAuthJson("loginBody", (jsonDrafts[`${nodeId}-auth-loginBody`] ?? stringifyObject(auth.loginBody)) + v)} />
+                </div>
                 <textarea
                   className="text-area text-area-code text-area-medium"
                   onChange={(event: ChangeEvent<HTMLTextAreaElement>) => updateAuthJson("loginBody", event.target.value)}
-                  value={stringifyObject(auth.loginBody)}
+                  value={jsonDrafts[`${nodeId}-auth-loginBody`] ?? stringifyObject(auth.loginBody)}
                 />
               </label>
             </>
@@ -685,11 +765,14 @@ export function DslStructuredEditor({ dsl, onChange }: DslStructuredEditorProps)
             {renderHeaderEditor(node.id, config)}
             {renderAuthEditor(node.id, config)}
             <label className="field-block field-span-two">
-              <span className="field-label">{t("dslEditor.restBody")}</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                <span className="field-label" style={{ marginBottom: 0 }}>{t("dslEditor.restBody")}</span>
+                <VariablePicker testResults={testResults} t={t} onSelect={(v) => handleJsonChange(node.id, "body", getJsonValue(node.id, "body", config.body) + v)} />
+              </div>
               <textarea
                 className="text-area text-area-code text-area-medium"
-                onChange={(event: ChangeEvent<HTMLTextAreaElement>) => updateJsonConfig(node.id, "body", event.target.value)}
-                value={stringifyObject(config.body)}
+                onChange={(event: ChangeEvent<HTMLTextAreaElement>) => handleJsonChange(node.id, "body", event.target.value)}
+                value={getJsonValue(node.id, "body", config.body)}
               />
             </label>
           </div>
@@ -804,11 +887,14 @@ export function DslStructuredEditor({ dsl, onChange }: DslStructuredEditorProps)
               <input className="text-input" onChange={(event) => updateNodeConfig(node.id, "password", event.target.value)} value={String(config.password ?? "")} />
             </label>
             <label className="field-block field-span-two">
-              <span className="field-label">{t("dslEditor.esBody")}</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                <span className="field-label" style={{ marginBottom: 0 }}>{t("dslEditor.esBody")}</span>
+                <VariablePicker testResults={testResults} t={t} onSelect={(v) => handleJsonChange(node.id, "body", getJsonValue(node.id, "body", config.body) + v)} />
+              </div>
               <textarea
                 className="text-area text-area-code text-area-medium"
-                onChange={(event: ChangeEvent<HTMLTextAreaElement>) => updateJsonConfig(node.id, "body", event.target.value)}
-                value={stringifyObject(config.body)}
+                onChange={(event: ChangeEvent<HTMLTextAreaElement>) => handleJsonChange(node.id, "body", event.target.value)}
+                value={getJsonValue(node.id, "body", config.body)}
               />
             </label>
           </div>
@@ -829,11 +915,14 @@ export function DslStructuredEditor({ dsl, onChange }: DslStructuredEditorProps)
               <input className="text-input" onChange={(event) => updateNodeConfig(node.id, "key", event.target.value)} value={String(config.key ?? "")} />
             </label>
             <label className="field-block field-span-two">
-              <span className="field-label">{t("dslEditor.kafkaValue")}</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                <span className="field-label" style={{ marginBottom: 0 }}>{t("dslEditor.kafkaValue")}</span>
+                <VariablePicker testResults={testResults} t={t} onSelect={(v) => handleJsonChange(node.id, "value", getJsonValue(node.id, "value", config.value) + v)} />
+              </div>
               <textarea
                 className="text-area text-area-code text-area-medium"
-                onChange={(event: ChangeEvent<HTMLTextAreaElement>) => updateJsonConfig(node.id, "value", event.target.value)}
-                value={stringifyObject(config.value)}
+                onChange={(event: ChangeEvent<HTMLTextAreaElement>) => handleJsonChange(node.id, "value", event.target.value)}
+                value={getJsonValue(node.id, "value", config.value)}
               />
             </label>
           </div>
@@ -875,11 +964,14 @@ export function DslStructuredEditor({ dsl, onChange }: DslStructuredEditorProps)
         {renderHeaderEditor(node.id, config)}
         {renderAuthEditor(node.id, config, true)}
         <label className="field-block field-span-two">
-          <span className="field-label">{t("dslEditor.digitalEmployeeBody")}</span>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+            <span className="field-label" style={{ marginBottom: 0 }}>{t("dslEditor.digitalEmployeeBody")}</span>
+            <VariablePicker testResults={testResults} t={t} onSelect={(v) => handleJsonChange(node.id, "body", getJsonValue(node.id, "body", config.body) + v)} />
+          </div>
           <textarea
             className="text-area text-area-code text-area-medium"
-            onChange={(event: ChangeEvent<HTMLTextAreaElement>) => updateJsonConfig(node.id, "body", event.target.value)}
-            value={stringifyObject(config.body)}
+            onChange={(event: ChangeEvent<HTMLTextAreaElement>) => handleJsonChange(node.id, "body", event.target.value)}
+            value={getJsonValue(node.id, "body", config.body)}
           />
         </label>
       </div>
@@ -986,6 +1078,46 @@ export function DslStructuredEditor({ dsl, onChange }: DslStructuredEditorProps)
 
                 {node.type === "ATOMIC_ABILITY" ? renderAtomicAbilityEditor(node, config) : null}
                 {node.type === "DIGITAL_EMPLOYEE" ? renderDigitalEmployeeEditor(node, config) : null}
+
+                {node.type === "ATOMIC_ABILITY" || node.type === "DIGITAL_EMPLOYEE" ? (
+                  <div className="sandbox-panel" style={{ marginTop: 24, padding: 16, background: "var(--color-bg-subtle, #f8f9fa)", borderRadius: 6, border: "1px solid var(--color-border, #e5e7eb)" }}>
+                    <div style={{ marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <strong style={{ fontSize: 13, color: "var(--color-text-primary)" }}>{t("dslEditor.sandboxTitle") || "Sandbox Debug (单步试跑)"}</strong>
+                      <button 
+                        className="ghost-button compact" 
+                        disabled={testingNodes[node.id]} 
+                        onClick={() => runDebugNode(node)} 
+                        type="button"
+                        style={{ border: "1px solid var(--color-border, #e5e7eb)", background: "var(--color-bg, #fff)" }}
+                      >
+                        {testingNodes[node.id] ? "Running..." : "Test Run"}
+                      </button>
+                    </div>
+                    <div className="form-grid-two">
+                      <label className="field-block field-span-two">
+                        <span className="field-label" style={{ fontSize: 12 }}>Mock Input JSON (Optional)</span>
+                        <textarea
+                          className="text-area text-area-code text-area-small"
+                          onChange={(e) => setTestInputs(prev => ({...prev, [node.id]: e.target.value}))}
+                          value={testInputs[node.id] ?? "{}"}
+                          placeholder="{}"
+                          style={{ minHeight: 80 }}
+                        />
+                      </label>
+                    </div>
+                    {testErrors[node.id] && (
+                      <span className="inline-message error" style={{ display: "block", marginTop: 8 }}>{testErrors[node.id]}</span>
+                    )}
+                    {testResults[node.id] && (
+                      <div style={{ marginTop: 12 }}>
+                        <span className="field-label" style={{ fontSize: 12 }}>Output Snapshot</span>
+                        <pre style={{ margin: 0, padding: 12, background: "#21252b", color: "#abb2bf", borderRadius: 4, maxHeight: 240, overflow: "auto", fontSize: 13 }}>
+                          {JSON.stringify(testResults[node.id], null, 2)}
+                        </pre>
+                      </div>
+                    )}
+                  </div>
+                ) : null}
 
                 {node.type === "WAIT_FOR_FEEDBACK" ? (
                   <label className="field-block">
@@ -1099,5 +1231,44 @@ export function DslStructuredEditor({ dsl, onChange }: DslStructuredEditorProps)
         </div>
       </div>
     </div>
+  );
+}
+
+function VariablePicker({ testResults, onSelect, t }: { testResults: Record<string, any>, onSelect: (val: string) => void, t: any }) {
+  const options: string[] = [];
+  
+  function traverse(obj: any, prefix: string) {
+    if (obj !== null && typeof obj === 'object') {
+      for (const [k, v] of Object.entries(obj)) {
+        if (v !== null && typeof v === 'object' && !Array.isArray(v)) {
+          traverse(v, `${prefix}.${k}`);
+        } else {
+          options.push(`${prefix}.${k}`);
+        }
+      }
+    }
+  }
+
+  for (const [nodeId, res] of Object.entries(testResults)) {
+     traverse(res?.output ?? res, `steps.${nodeId}.output`);
+  }
+
+  if (options.length === 0) return null;
+
+  return (
+    <select 
+      className="text-input"
+      style={{ fontSize: 11, padding: '2px 4px', borderRadius: 4, height: 26, color: 'var(--color-primary)', width: 'auto', display: 'inline-block' }}
+      onChange={(e) => {
+        if (e.target.value) {
+          onSelect(e.target.value);
+          e.target.value = "";
+        }
+      }}
+      defaultValue=""
+    >
+      <option value="" disabled>+ {t("dslEditor.insertVariable", "Insert Var")}</option>
+      {options.map(opt => <option key={opt} value={`{{ ${opt} }}`}>{opt}</option>)}
+    </select>
   );
 }

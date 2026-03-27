@@ -63,7 +63,12 @@ class AtomicAbilityNodeExecutor(
 
         val abilityType = context.node.config["abilityType"]?.toString() ?: "REST"
         val handler = atomicAbilityHandlerRegistry.getHandler(AtomicAbilityType.valueOf(abilityType))
-        return handler.execute(context)
+        
+        // 全局动态上下文挂载与渲染 (拦截并替换 {{ context | steps }})
+        val evaluatedConfig = ExpressionEvaluator.evaluate(context.node.config, context.workflowContext)
+        val renderedContext = context.copy(node = context.node.copy(config = evaluatedConfig))
+
+        return handler.execute(renderedContext)
     }
 
     private fun shouldUseMockAbility(context: NodeExecutionContext): Boolean =

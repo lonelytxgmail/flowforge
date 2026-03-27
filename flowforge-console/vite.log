@@ -1,0 +1,13 @@
+
+> flowforge-console@0.1.0 dev
+> vite
+
+
+  VITE v5.4.21  ready in 95 ms
+
+  ➜  Local:   http://localhost:5173/
+  ➜  Network: use --host to expose
+  ➜  press h + enter to show help
+11:51:08 AM [vite] hmr update /src/pages/WorkflowDetailPage.tsx, /src/pages/DashboardPage.tsx, /src/pages/WorkflowsPage.tsx, /src/pages/InstancesPage.tsx, /src/pages/NodeTemplatesPage.tsx, /src/pages/CreateWorkflowPage.tsx, /src/pages/InstanceDetailPage.tsx, /src/components/DslStructuredEditor.tsx
+11:51:47 AM [vite] hmr update /src/components/DslStructuredEditor.tsx
+11:52:13 AM [vite] hmr update /src/components/DslStructuredEditor.tsx

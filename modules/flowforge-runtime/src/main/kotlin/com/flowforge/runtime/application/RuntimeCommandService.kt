@@ -10,9 +10,11 @@ import com.flowforge.runtime.infra.ExecutionEventRepository
 import com.flowforge.runtime.infra.FeedbackRecordRepository
 import com.flowforge.runtime.infra.NodeExecutionRepository
 import com.flowforge.runtime.infra.WorkflowInstanceRepository
+import com.flowforge.runtime.infra.WorkflowTaskCreateOptions
 import com.flowforge.runtime.infra.WorkflowTaskRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.time.LocalDateTime
 
 /**
  * 运行态命令服务：
@@ -43,11 +45,15 @@ class RuntimeCommandService(
             throw AppException("Only RUNNING or CREATED instances can be paused")
         }
 
-        workflowInstanceRepository.updateStatus(
+        val updated = workflowInstanceRepository.updateStatusIfCurrent(
             instanceId = instanceId,
+            currentStatuses = listOf(WorkflowInstanceStatus.RUNNING, WorkflowInstanceStatus.CREATED),
             status = WorkflowInstanceStatus.PAUSED,
             currentNodeId = instance.currentNodeId
         )
+        if (!updated) {
+            throw AppException("Instance state changed while pausing: $instanceId")
+        }
 
         executionEventRepository.append(
             workflowInstanceId = instanceId,
@@ -66,11 +72,15 @@ class RuntimeCommandService(
             throw AppException("Only PAUSED instances can be resumed")
         }
 
-        workflowInstanceRepository.updateStatus(
+        val updated = workflowInstanceRepository.updateStatusIfCurrent(
             instanceId = instanceId,
+            currentStatuses = listOf(WorkflowInstanceStatus.PAUSED),
             status = WorkflowInstanceStatus.RUNNING,
             currentNodeId = instance.currentNodeId
         )
+        if (!updated) {
+            throw AppException("Instance state changed while resuming: $instanceId")
+        }
 
         executionEventRepository.append(
             workflowInstanceId = instanceId,
@@ -92,28 +102,83 @@ class RuntimeCommandService(
         val failedTask = workflowTaskRepository.findLatestFailedTask(instanceId)
             ?: throw AppException("No failed task found for instance: $instanceId")
 
-        val retryInput = parseJsonMap(failedTask.inputJson)
+        retryTask(instanceId, failedTask.id, "instance_retry")
+    }
 
-        workflowTaskRepository.requeueTask(
+    @Transactional
+    fun retryTask(instanceId: Long, taskId: Long, reason: String? = null): Long {
+        val instance = workflowInstanceRepository.findById(instanceId)
+            ?: throw AppException("Workflow instance not found: $instanceId")
+        val failedTask = workflowTaskRepository.findById(taskId)
+            ?: throw AppException("Workflow task not found: $taskId")
+
+        if (failedTask.workflowInstanceId != instanceId) {
+            throw AppException("Task $taskId does not belong to instance $instanceId")
+        }
+        if (failedTask.status != TaskStatus.FAILED) {
+            throw AppException("Only FAILED tasks can be retried")
+        }
+        if (failedTask.attemptNo >= failedTask.maxAttempts) {
+            throw AppException("Task $taskId exhausted max attempts: ${failedTask.maxAttempts}")
+        }
+        if (instance.status != WorkflowInstanceStatus.FAILED && instance.status != WorkflowInstanceStatus.PAUSED) {
+            throw AppException("Task retry only supports FAILED or PAUSED instances")
+        }
+
+        val retryInput = parseJsonMap(failedTask.inputJson)
+        val retryTaskId = workflowTaskRepository.requeueTask(
             workflowInstanceId = instanceId,
             nodeId = failedTask.nodeId,
-            input = retryInput
+            input = retryInput,
+            options = WorkflowTaskCreateOptions(
+                attemptNo = failedTask.attemptNo + 1,
+                sourceTaskId = failedTask.id,
+                retryReason = reason ?: "manual_retry",
+                availableAt = LocalDateTime.now().plusSeconds((failedTask.retryBackoffSeconds ?: 0).toLong()),
+                maxAttempts = failedTask.maxAttempts,
+                timeoutSeconds = failedTask.timeoutSeconds,
+                retryBackoffSeconds = failedTask.retryBackoffSeconds
+            )
         )
 
-        workflowInstanceRepository.updateStatus(
+        val updated = workflowInstanceRepository.updateStatusIfCurrent(
             instanceId = instanceId,
+            currentStatuses = listOf(WorkflowInstanceStatus.FAILED, WorkflowInstanceStatus.PAUSED),
             status = WorkflowInstanceStatus.RUNNING,
             currentNodeId = failedTask.nodeId,
             endedAt = null
         )
+        if (!updated) {
+            throw AppException("Instance state changed while retrying task: $instanceId")
+        }
 
+        executionEventRepository.append(
+            workflowInstanceId = instanceId,
+            nodeExecutionId = null,
+            eventType = ExecutionEventType.TASK_RETRIED,
+            eventMessage = "Workflow task retried",
+            eventDetail = mapOf(
+                "taskId" to failedTask.id,
+                "retryTaskId" to retryTaskId,
+                "nodeId" to failedTask.nodeId,
+                "attemptNo" to (failedTask.attemptNo + 1),
+                "reason" to (reason ?: "manual_retry")
+            )
+        )
         executionEventRepository.append(
             workflowInstanceId = instanceId,
             nodeExecutionId = null,
             eventType = ExecutionEventType.INSTANCE_RETRIED,
             eventMessage = "Workflow instance retried",
-            eventDetail = mapOf("nodeId" to failedTask.nodeId)
+            eventDetail = mapOf(
+                "taskId" to failedTask.id,
+                "retryTaskId" to retryTaskId,
+                "nodeId" to failedTask.nodeId
+            )
         )
+
+        workflowTaskProcessingGateway.processAvailableTasks(20)
+        return retryTaskId
     }
 
     @Transactional
@@ -170,16 +235,16 @@ class RuntimeCommandService(
             nodeId = waitingNodeExecution.nodeId
         )
 
-        workflowTaskRepository.requeueTask(
-            workflowInstanceId = instanceId,
-            nodeId = nextNodeId,
-            input = mergedOutput
-        )
-        workflowInstanceRepository.updateStatus(
+        workflowTaskRepository.requeueTask(workflowInstanceId = instanceId, nodeId = nextNodeId, input = mergedOutput)
+        val updated = workflowInstanceRepository.updateStatusIfCurrent(
             instanceId = instanceId,
+            currentStatuses = listOf(WorkflowInstanceStatus.PAUSED),
             status = WorkflowInstanceStatus.RUNNING,
             currentNodeId = nextNodeId
         )
+        if (!updated) {
+            throw AppException("Instance state changed while resuming by feedback: $instanceId")
+        }
         executionEventRepository.append(
             workflowInstanceId = instanceId,
             nodeExecutionId = waitingNodeExecution.id,

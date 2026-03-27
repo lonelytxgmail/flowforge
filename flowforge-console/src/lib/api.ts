@@ -3,6 +3,7 @@ import type {
   ExecutionEvent,
   FeedbackRequest,
   FeedbackRecord,
+  RetryTaskRequest,
   NodeTemplate,
   NodeExecution,
   PublishWorkflowVersionRequest,
@@ -12,6 +13,7 @@ import type {
   WorkflowDefinition,
   WorkflowDsl,
   WorkflowInstance,
+  WorkflowTask,
   WorkflowVersion,
 } from "./types";
 
@@ -64,6 +66,18 @@ type RuntimeCommandResponse = {
   status: string;
 };
 
+export type RunNodeDebugRequest = {
+  nodeType: string;
+  nodeConfig: Record<string, unknown>;
+  inputPayload?: Record<string, unknown>;
+  workflowContext?: Record<string, unknown>;
+};
+
+export type RunFlowDebugRequest = {
+  dsl: WorkflowDsl;
+  inputPayload?: Record<string, unknown>;
+};
+
 export const api = {
   listWorkflows: () => request<WorkflowDefinition[]>("/api/workflows"),
   getWorkflow: (id: string) => request<WorkflowDefinition>(`/api/workflows/${id}`),
@@ -100,9 +114,11 @@ export const api = {
       body: JSON.stringify(payload ?? {}),
     }),
   listInstances: () => request<WorkflowInstance[]>("/api/instances"),
+  listTasks: (status?: string) => request<WorkflowTask[]>(`/api/instances/tasks${status ? `?status=${encodeURIComponent(status)}` : ""}`),
   getInstance: (id: string) => request<WorkflowInstance>(`/api/instances/${id}`),
   getNodeExecutions: (id: string) => request<NodeExecution[]>(`/api/instances/${id}/node-executions`),
   getEvents: (id: string) => request<ExecutionEvent[]>(`/api/instances/${id}/events`),
+  getTasks: (id: string) => request<WorkflowTask[]>(`/api/instances/${id}/tasks`),
   getFeedbackRecords: (id: string) => request<FeedbackRecord[]>(`/api/instances/${id}/feedback-records`),
   pauseInstance: (id: string) =>
     request<RuntimeCommandResponse>(`/api/instances/${id}/pause`, {
@@ -116,8 +132,23 @@ export const api = {
     request<RuntimeCommandResponse>(`/api/instances/${id}/retry`, {
       method: "POST",
     }),
+  retryTask: (instanceId: string, taskId: string, payload?: RetryTaskRequest) =>
+    request<RuntimeCommandResponse & { taskId: number }>(`/api/instances/${instanceId}/tasks/${taskId}/retry`, {
+      method: "POST",
+      body: JSON.stringify(payload ?? {}),
+    }),
   submitFeedback: (id: string, payload: FeedbackRequest) =>
     request<RuntimeCommandResponse>(`/api/instances/${id}/feedback`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  runNodeDebug: (payload: RunNodeDebugRequest) =>
+    request<any>(`/api/workflows/debug/run-node`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  runFlowDebug: (payload: RunFlowDebugRequest) =>
+    request<any>(`/api/workflows/debug/run-flow`, {
       method: "POST",
       body: JSON.stringify(payload),
     }),

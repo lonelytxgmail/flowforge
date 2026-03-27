@@ -4,8 +4,10 @@ import com.flowforge.common.model.AppException
 import com.flowforge.common.model.ExecutionEventType
 import com.flowforge.runtime.infra.ExecutionEventRepository
 import com.flowforge.runtime.infra.WorkflowInstanceRepository
+import com.flowforge.runtime.infra.WorkflowTaskCreateOptions
 import com.flowforge.runtime.infra.WorkflowTaskRepository
 import com.flowforge.workflow.application.WorkflowDefinitionService
+import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 
 data class StartWorkflowCommand(
@@ -30,6 +32,7 @@ class WorkflowEngineService(
     private val workflowTaskWorker: WorkflowTaskWorker,
     private val executionEventRepository: ExecutionEventRepository
 ) {
+    private val logger = LoggerFactory.getLogger(WorkflowEngineService::class.java)
 
     fun startWorkflow(command: StartWorkflowCommand): Long {
         val version = workflowDefinitionService.getLatestPublishedVersion(command.workflowDefinitionId)
@@ -46,18 +49,39 @@ class WorkflowEngineService(
             workflowInstanceId = instanceId,
             nodeExecutionId = null,
             eventType = ExecutionEventType.INSTANCE_CREATED,
-            eventMessage = "Workflow instance created"
+            eventMessage = "Workflow instance created",
+            eventDetail = mapOf(
+                "workflowDefinitionId" to version.workflowDefinitionId,
+                "workflowVersionId" to version.id,
+                "startNodeId" to startNode.id
+            )
         )
 
-        workflowTaskRepository.create(
+        val taskId = workflowTaskRepository.create(
             workflowInstanceId = instanceId,
             nodeId = startNode.id,
-            input = command.inputPayload ?: emptyMap()
+            input = command.inputPayload ?: emptyMap(),
+            options = WorkflowTaskCreateOptions(maxAttempts = 1)
+        )
+        executionEventRepository.append(
+            workflowInstanceId = instanceId,
+            nodeExecutionId = null,
+            eventType = ExecutionEventType.TASK_CREATED,
+            eventMessage = "Workflow task created",
+            eventDetail = mapOf(
+                "taskId" to taskId,
+                "nodeId" to startNode.id,
+                "attemptNo" to 1
+            )
         )
 
         // 为了保持第一阶段 API 体验简单，这里启动后会立即尝试消费任务。
         // 将来如果完全异步化，可以去掉这一行，只保留 @Scheduled worker。
-        workflowTaskWorker.processAvailableTasks(maxTasks = version.dsl.nodes.size + 2)
+        try {
+            workflowTaskWorker.processAvailableTasks(maxTasks = version.dsl.nodes.size + 2)
+        } catch (ex: Exception) {
+            logger.warn("Workflow instance {} started but immediate task processing failed: {}", instanceId, ex.message)
+        }
 
         return instanceId
     }

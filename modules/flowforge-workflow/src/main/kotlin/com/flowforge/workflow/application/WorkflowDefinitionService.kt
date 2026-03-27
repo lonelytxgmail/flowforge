@@ -3,6 +3,7 @@ package com.flowforge.workflow.application
 import com.flowforge.common.model.AppException
 import com.flowforge.common.model.NodeType
 import com.flowforge.workflow.domain.WorkflowDefinition
+import com.flowforge.workflow.domain.NodeConfigValidator
 import com.flowforge.workflow.domain.NodeTemplate
 import com.flowforge.workflow.domain.WorkflowVersion
 import com.flowforge.workflow.infra.WorkflowDefinitionRepository
@@ -155,6 +156,10 @@ class WorkflowDefinitionService(
                 throw AppException("Edge ${index + 1} references unknown target node: ${edge.to}")
             }
         }
+        
+        dsl.nodes.forEach { node ->
+            NodeConfigValidator.validateNodeConfig(node.type, node.config)
+        }
     }
 
     private fun validateNodeTemplate(command: SaveNodeTemplateCommand) {
@@ -175,6 +180,9 @@ class WorkflowDefinitionService(
                 val hasMockAbility = command.nodeConfig["abilityCode"] != null
                 if (abilityType == null && !hasMockAbility) {
                     throw AppException("ATOMIC_ABILITY template requires config.abilityType or config.abilityCode")
+                }
+                if (abilityType != null) {
+                    NodeConfigValidator.validateNodeConfig(NodeType.ATOMIC_ABILITY, command.nodeConfig)
                 }
             }
             NodeType.DIGITAL_EMPLOYEE, NodeType.CONDITION, NodeType.WAIT_FOR_FEEDBACK,

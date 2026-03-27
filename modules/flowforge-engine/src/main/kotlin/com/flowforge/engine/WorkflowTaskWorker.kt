@@ -11,6 +11,7 @@ import com.flowforge.runtime.domain.WorkflowTask
 import com.flowforge.runtime.infra.ExecutionEventRepository
 import com.flowforge.runtime.infra.NodeExecutionRepository
 import com.flowforge.runtime.infra.WorkflowInstanceRepository
+import com.flowforge.runtime.infra.WorkflowTaskCreateOptions
 import com.flowforge.runtime.infra.WorkflowTaskRepository
 import com.flowforge.workflow.infra.WorkflowVersionRepository
 import org.springframework.scheduling.annotation.Scheduled
@@ -66,6 +67,13 @@ class WorkflowTaskWorker(
         // 如果实例已经结束了，说明这个任务已经没有必要继续执行。
         if (instance.status == WorkflowInstanceStatus.SUCCEEDED || instance.status == WorkflowInstanceStatus.FAILED) {
             workflowTaskRepository.markCancelled(task.id)
+            executionEventRepository.append(
+                workflowInstanceId = instance.id,
+                nodeExecutionId = null,
+                eventType = ExecutionEventType.TASK_CANCELLED,
+                eventMessage = "Workflow task cancelled because instance already ended",
+                eventDetail = mapOf("taskId" to task.id, "nodeId" to task.nodeId, "instanceStatus" to instance.status.name)
+            )
             return
         }
 
@@ -95,14 +103,36 @@ class WorkflowTaskWorker(
 
         // 第一个真正执行的任务到来时，把实例推进到 RUNNING。
         if (instance.status == WorkflowInstanceStatus.CREATED) {
-            workflowInstanceRepository.updateStatus(instance.id, WorkflowInstanceStatus.RUNNING, node.id)
+            val updated = workflowInstanceRepository.updateStatusIfCurrent(
+                instanceId = instance.id,
+                currentStatuses = listOf(WorkflowInstanceStatus.CREATED),
+                status = WorkflowInstanceStatus.RUNNING,
+                currentNodeId = node.id
+            )
+            if (!updated) {
+                throw AppException("Workflow instance state changed before start: ${instance.id}")
+            }
             executionEventRepository.append(
                 workflowInstanceId = instance.id,
                 nodeExecutionId = null,
                 eventType = ExecutionEventType.INSTANCE_STARTED,
-                eventMessage = "Workflow instance started"
+                eventMessage = "Workflow instance started",
+                eventDetail = mapOf("taskId" to task.id, "nodeId" to node.id)
             )
         }
+
+        executionEventRepository.append(
+            workflowInstanceId = instance.id,
+            nodeExecutionId = null,
+            eventType = ExecutionEventType.TASK_CLAIMED,
+            eventMessage = "Workflow task claimed",
+            eventDetail = mapOf(
+                "taskId" to task.id,
+                "nodeId" to task.nodeId,
+                "attemptNo" to task.attemptNo,
+                "lockOwner" to task.lockOwner
+            )
+        )
 
         val nodeExecutionId = nodeExecutionRepository.create(
             workflowInstanceId = instance.id,
@@ -162,13 +192,18 @@ class WorkflowTaskWorker(
                     nodeExecutionId = nodeExecutionId,
                     eventType = ExecutionEventType.NODE_WAITING,
                     eventMessage = "Node is waiting for feedback: ${node.name}",
-                    eventDetail = result.output
+                    eventDetail = mapOf(
+                        "taskId" to task.id,
+                        "nodeId" to node.id,
+                        "output" to result.output
+                    )
                 )
                 executionEventRepository.append(
                     workflowInstanceId = instance.id,
                     nodeExecutionId = nodeExecutionId,
                     eventType = ExecutionEventType.INSTANCE_PAUSED,
-                    eventMessage = "Workflow instance paused for feedback"
+                    eventMessage = "Workflow instance paused for feedback",
+                    eventDetail = mapOf("taskId" to task.id, "nodeId" to node.id)
                 )
                 return
             }
@@ -179,7 +214,11 @@ class WorkflowTaskWorker(
                 nodeExecutionId = nodeExecutionId,
                 eventType = ExecutionEventType.NODE_SUCCEEDED,
                 eventMessage = "Node succeeded: ${node.name}",
-                eventDetail = result.output
+                eventDetail = mapOf(
+                    "taskId" to task.id,
+                    "nodeId" to node.id,
+                    "output" to result.output
+                )
             )
 
             if (node.type == NodeType.END) {
@@ -193,7 +232,8 @@ class WorkflowTaskWorker(
                     workflowInstanceId = instance.id,
                     nodeExecutionId = nodeExecutionId,
                     eventType = ExecutionEventType.INSTANCE_FINISHED,
-                    eventMessage = "Workflow instance finished"
+                    eventMessage = "Workflow instance finished",
+                    eventDetail = mapOf("taskId" to task.id, "nodeId" to node.id)
                 )
                 return
             }
@@ -207,15 +247,27 @@ class WorkflowTaskWorker(
             val nextNodeDsl = nodesById[nextNode]
                 ?: throw AppException("Next node not found in workflow DSL: $nextNode")
 
-            workflowTaskRepository.create(
+            val nextTaskId = workflowTaskRepository.create(
                 workflowInstanceId = instance.id,
                 nodeId = nextNodeDsl.id,
-                input = result.output
+                input = result.output,
+                options = WorkflowTaskCreateOptions(maxAttempts = readMaxAttempts(nextNodeDsl.config))
             )
             workflowInstanceRepository.updateStatus(
                 instanceId = instance.id,
                 status = WorkflowInstanceStatus.RUNNING,
                 currentNodeId = nextNodeDsl.id
+            )
+            executionEventRepository.append(
+                workflowInstanceId = instance.id,
+                nodeExecutionId = nodeExecutionId,
+                eventType = ExecutionEventType.TASK_CREATED,
+                eventMessage = "Workflow task created",
+                eventDetail = mapOf(
+                    "taskId" to nextTaskId,
+                    "nodeId" to nextNodeDsl.id,
+                    "attemptNo" to 1
+                )
             )
         } catch (ex: Exception) {
             nodeExecutionRepository.markFailed(nodeExecutionId, ex.message ?: "unknown error")
@@ -231,18 +283,30 @@ class WorkflowTaskWorker(
                 nodeExecutionId = nodeExecutionId,
                 eventType = ExecutionEventType.NODE_FAILED,
                 eventMessage = "Node failed: ${node.name}",
-                eventDetail = mapOf("error" to (ex.message ?: "unknown error"))
+                eventDetail = mapOf(
+                    "taskId" to task.id,
+                    "nodeId" to node.id,
+                    "attemptNo" to task.attemptNo,
+                    "error" to (ex.message ?: "unknown error")
+                )
             )
             executionEventRepository.append(
                 workflowInstanceId = instance.id,
                 nodeExecutionId = nodeExecutionId,
                 eventType = ExecutionEventType.INSTANCE_FAILED,
                 eventMessage = "Workflow instance failed",
-                eventDetail = mapOf("error" to (ex.message ?: "unknown error"))
+                eventDetail = mapOf(
+                    "taskId" to task.id,
+                    "nodeId" to node.id,
+                    "error" to (ex.message ?: "unknown error")
+                )
             )
             throw ex
         }
     }
+
+    private fun readMaxAttempts(config: Map<String, Any?>): Int =
+        (config["maxAttempts"] as? Number)?.toInt()?.takeIf { it > 0 } ?: 1
 
     private fun parseJsonMap(json: String?): Map<String, Any?> {
         if (json.isNullOrBlank()) {

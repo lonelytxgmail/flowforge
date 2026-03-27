@@ -40,11 +40,11 @@ CREATE TABLE IF NOT EXISTS node_template (
 CREATE INDEX IF NOT EXISTS idx_node_template_node_type
     ON node_template(node_type);
 
-CREATE INDEX IF NOT EXISTS idx_node_template_group_name
-    ON node_template(group_name);
-
 ALTER TABLE node_template
     ADD COLUMN IF NOT EXISTS group_name VARCHAR(128);
+
+CREATE INDEX IF NOT EXISTS idx_node_template_group_name
+    ON node_template(group_name);
 
 -- 实例表：某个工作流版本的一次运行
 CREATE TABLE IF NOT EXISTS workflow_instance (
@@ -106,11 +106,16 @@ CREATE TABLE IF NOT EXISTS workflow_task (
     node_id VARCHAR(128) NOT NULL,
     status VARCHAR(32) NOT NULL,
     attempt_no INTEGER NOT NULL DEFAULT 1,
+    source_task_id BIGINT REFERENCES workflow_task(id),
     input_json JSONB,
+    retry_reason TEXT,
     available_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     locked_at TIMESTAMP,
     lock_owner VARCHAR(128),
     error_message TEXT,
+    max_attempts INTEGER NOT NULL DEFAULT 1,
+    timeout_seconds INTEGER,
+    retry_backoff_seconds INTEGER,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -123,6 +128,21 @@ ALTER TABLE workflow_task
 
 ALTER TABLE workflow_task
     ADD COLUMN IF NOT EXISTS error_message TEXT;
+
+ALTER TABLE workflow_task
+    ADD COLUMN IF NOT EXISTS source_task_id BIGINT REFERENCES workflow_task(id);
+
+ALTER TABLE workflow_task
+    ADD COLUMN IF NOT EXISTS retry_reason TEXT;
+
+ALTER TABLE workflow_task
+    ADD COLUMN IF NOT EXISTS max_attempts INTEGER NOT NULL DEFAULT 1;
+
+ALTER TABLE workflow_task
+    ADD COLUMN IF NOT EXISTS timeout_seconds INTEGER;
+
+ALTER TABLE workflow_task
+    ADD COLUMN IF NOT EXISTS retry_backoff_seconds INTEGER;
 
 -- 反馈表：第一阶段最小闭环不会完整使用，但先把模型建出来
 CREATE TABLE IF NOT EXISTS feedback_record (

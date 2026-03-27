@@ -16,12 +16,16 @@ data class WorkflowTask(
     val nodeId: String,
     val status: TaskStatus,
     val attemptNo: Int,
+    val sourceTaskId: Long?,
     val inputJson: String?,
+    val retryReason: String?,
     val availableAt: LocalDateTime,
     val lockedAt: LocalDateTime?,
     val lockOwner: String?,
     val errorMessage: String?,
+    val maxAttempts: Int,
+    val timeoutSeconds: Int?,
+    val retryBackoffSeconds: Int?,
     val createdAt: LocalDateTime,
     val updatedAt: LocalDateTime
 )
-

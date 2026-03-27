@@ -6,6 +6,7 @@ import io.swagger.v3.oas.annotations.Operation
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
+import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
@@ -14,6 +15,10 @@ data class SubmitFeedbackRequest(
     val feedbackType: String = "MANUAL_FEEDBACK",
     val feedbackPayload: Map<String, Any?>? = null,
     val createdBy: String? = null
+)
+
+data class RetryTaskRequest(
+    val reason: String? = null
 )
 
 @RestController
@@ -43,6 +48,16 @@ class RuntimeController(
     fun getExecutionEvents(@PathVariable instanceId: Long) =
         runtimeQueryService.getExecutionEvents(instanceId)
 
+    @Operation(summary = "查询实例任务链路")
+    @GetMapping("/{instanceId}/tasks")
+    fun getWorkflowTasks(@PathVariable instanceId: Long) =
+        runtimeQueryService.getWorkflowTasks(instanceId)
+
+    @Operation(summary = "查询任务列表")
+    @GetMapping("/tasks")
+    fun listWorkflowTasks(@RequestParam(required = false) status: String?) =
+        runtimeQueryService.listWorkflowTasks(status)
+
     @Operation(summary = "查询反馈记录")
     @GetMapping("/{instanceId}/feedback-records")
     fun getFeedbackRecords(@PathVariable instanceId: Long) =
@@ -67,6 +82,21 @@ class RuntimeController(
     fun retryInstance(@PathVariable instanceId: Long): Map<String, Any> {
         runtimeCommandService.retryInstance(instanceId)
         return mapOf("instanceId" to instanceId, "status" to "RUNNING")
+    }
+
+    @Operation(summary = "重试失败任务")
+    @PostMapping("/{instanceId}/tasks/{taskId}/retry")
+    fun retryTask(
+        @PathVariable instanceId: Long,
+        @PathVariable taskId: Long,
+        @RequestBody(required = false) request: RetryTaskRequest?
+    ): Map<String, Any> {
+        val retryTaskId = runtimeCommandService.retryTask(
+            instanceId = instanceId,
+            taskId = taskId,
+            reason = request?.reason
+        )
+        return mapOf("instanceId" to instanceId, "status" to "RUNNING", "taskId" to retryTaskId)
     }
 
     @Operation(summary = "提交反馈并继续执行")
